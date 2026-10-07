@@ -26,11 +26,17 @@ object FtmsControl {
         return Reply(f[1].toInt() and 0xFF, f[2].toInt() and 0xFF)
     }
 
-    /** The belt status that shows a command took effect, used when the pad does not send a control-point reply. */
-    fun confirmedBy(c: PadCommand, s: BeltStatus): Boolean = when (c) {
-        PadCommand.PAUSE -> s == BeltStatus.PAUSING || s == BeltStatus.PAUSED
-        PadCommand.RESUME -> s == BeltStatus.STARTING || s == BeltStatus.RUNNING
-        PadCommand.STOP -> s != BeltStatus.RUNNING
+    /**
+     * Whether a belt status change proves a command took effect, used when the pad sends no control-point reply. `before` is the
+     * status when the command was sent. A status that did not change proves nothing, so a command is never confirmed by a state
+     * the belt was already in; a stop from anything but a moving belt is confirmed only by the walk actually ending.
+     */
+    fun confirmedBy(c: PadCommand, before: BeltStatus, now: BeltStatus): Boolean = when (c) {
+        PadCommand.PAUSE -> before == BeltStatus.RUNNING && (now == BeltStatus.PAUSING || now == BeltStatus.PAUSED)
+        PadCommand.RESUME -> (before == BeltStatus.PAUSED || before == BeltStatus.PAUSING) && (now == BeltStatus.STARTING || now == BeltStatus.RUNNING)
+        PadCommand.STOP ->
+            if (before == BeltStatus.RUNNING) now != BeltStatus.RUNNING
+            else now == BeltStatus.IDLE || now == BeltStatus.STOPPED
     }
 
     /** Which buttons make sense for a belt status. Stop is offered whenever the belt might be moving. Nothing while disconnected. */

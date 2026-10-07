@@ -43,13 +43,27 @@ class FtmsControlTest {
         assertEquals(emptySet(), FtmsControl.allowed(BeltStatus.STOPPED, true))
     }
 
-    @Test fun aCommandIsConfirmedWhenTheBeltStatusMovesTheExpectedWay() {
-        assertTrue(FtmsControl.confirmedBy(PadCommand.PAUSE, BeltStatus.PAUSING)); assertTrue(FtmsControl.confirmedBy(PadCommand.PAUSE, BeltStatus.PAUSED))
-        assertFalse(FtmsControl.confirmedBy(PadCommand.PAUSE, BeltStatus.RUNNING))
-        assertTrue(FtmsControl.confirmedBy(PadCommand.RESUME, BeltStatus.STARTING)); assertTrue(FtmsControl.confirmedBy(PadCommand.RESUME, BeltStatus.RUNNING))
-        assertFalse(FtmsControl.confirmedBy(PadCommand.RESUME, BeltStatus.PAUSED))
-        assertTrue(FtmsControl.confirmedBy(PadCommand.STOP, BeltStatus.IDLE)); assertTrue(FtmsControl.confirmedBy(PadCommand.STOP, BeltStatus.PAUSING))
-        assertFalse(FtmsControl.confirmedBy(PadCommand.STOP, BeltStatus.RUNNING))
+    private fun confirmed(c: PadCommand, before: BeltStatus, now: BeltStatus) = FtmsControl.confirmedBy(c, before, now)
+
+    @Test fun pauseAndResumeAreConfirmedOnlyByTheExpectedChange() {
+        assertTrue(confirmed(PadCommand.PAUSE, BeltStatus.RUNNING, BeltStatus.PAUSING)); assertTrue(confirmed(PadCommand.PAUSE, BeltStatus.RUNNING, BeltStatus.PAUSED))
+        assertFalse(confirmed(PadCommand.PAUSE, BeltStatus.RUNNING, BeltStatus.RUNNING))
+        assertFalse(confirmed(PadCommand.PAUSE, BeltStatus.PAUSED, BeltStatus.PAUSED))       // already paused: no change proves anything
+        assertTrue(confirmed(PadCommand.RESUME, BeltStatus.PAUSED, BeltStatus.STARTING)); assertTrue(confirmed(PadCommand.RESUME, BeltStatus.PAUSED, BeltStatus.RUNNING))
+        assertFalse(confirmed(PadCommand.RESUME, BeltStatus.PAUSED, BeltStatus.PAUSED))
+        assertFalse(confirmed(PadCommand.RESUME, BeltStatus.RUNNING, BeltStatus.RUNNING))
+    }
+
+    @Test fun stopIsNotFalselyConfirmed() {
+        // From a moving belt, any move off RUNNING shows it took effect.
+        assertTrue(confirmed(PadCommand.STOP, BeltStatus.RUNNING, BeltStatus.PAUSING)); assertTrue(confirmed(PadCommand.STOP, BeltStatus.RUNNING, BeltStatus.IDLE))
+        assertFalse(confirmed(PadCommand.STOP, BeltStatus.RUNNING, BeltStatus.RUNNING))
+        // From paused, pausing, counting down or unknown, only the walk actually ending proves it. The same status proves nothing.
+        for (before in listOf(BeltStatus.PAUSED, BeltStatus.PAUSING, BeltStatus.STARTING, BeltStatus.UNKNOWN)) {
+            assertFalse(confirmed(PadCommand.STOP, before, before))
+            assertFalse(confirmed(PadCommand.STOP, before, BeltStatus.PAUSED))
+            assertTrue(confirmed(PadCommand.STOP, before, BeltStatus.IDLE)); assertTrue(confirmed(PadCommand.STOP, before, BeltStatus.STOPPED))
+        }
     }
 
     @Test fun nothingIsAllowedWhileDisconnected() {

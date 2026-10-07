@@ -92,6 +92,7 @@ class WalkService : Service() {
     private val merger = TelemetryMerger()
     private val gate = CommandGate()
     private var pendingCmd: PadCommand? = null
+    private var pendingBefore = BeltStatus.IDLE        // belt status when the pending command was sent
     private var cmdSeq = 0
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
@@ -168,7 +169,7 @@ class WalkService : Service() {
         if (!prefs.controlsEnabled || cmd !in FtmsControl.allowed(last.status, last.connected)) return
         if (!gate.accept(cmd, SystemClock.elapsedRealtime())) return
         val m = manager ?: return
-        pendingCmd = cmd
+        pendingCmd = cmd; pendingBefore = last.status
         val seq = ++cmdSeq
         m.send(cmd) { written -> main.post { if (!written && pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.FAILED) } }
         main.postDelayed({ if (pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.NOT_CONFIRMED) }, 2_500)
@@ -198,7 +199,7 @@ class WalkService : Service() {
         val t = merger.merge(UrevoDriver.decodeFff1(bytes) ?: return)
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
         last = last.copy(status = t.status, speedKmh = if (t.status == BeltStatus.RUNNING) (t.speedKmh ?: 0.0) else 0.0)
-        pendingCmd?.let { if (FtmsControl.confirmedBy(it, t.status)) finishCommand(CommandResult.OK) }   // some pads never reply on the control point
+        pendingCmd?.let { if (FtmsControl.confirmedBy(it, pendingBefore, t.status)) finishCommand(CommandResult.OK) }   // some pads never reply on the control point
         publish()
     }
 
