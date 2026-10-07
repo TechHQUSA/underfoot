@@ -29,8 +29,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import org.walkpadhealth.AppPrefs
 import org.walkpadhealth.Live
 import org.walkpadhealth.LiveState
@@ -39,8 +37,10 @@ import org.walkpadhealth.R
 import org.walkpadhealth.ble.FrameLog
 import org.walkpadhealth.ble.PadManager
 import org.walkpadhealth.data.AppDb
-import org.walkpadhealth.data.toEntity
+import org.walkpadhealth.data.FlushResult
+import org.walkpadhealth.data.SessionStore
 import org.walkpadhealth.data.toProfile
+import kotlinx.coroutines.flow.collect
 import org.walkpadhealth.health.SyncScheduler
 import org.walkpadhealth.CommandResult
 import org.walkpadhealth.protocol.BeltStatus
@@ -48,16 +48,13 @@ import org.walkpadhealth.protocol.CommandGate
 import org.walkpadhealth.protocol.FtmsControl
 import org.walkpadhealth.protocol.PadCommand
 import org.walkpadhealth.protocol.Estimators
-import org.walkpadhealth.protocol.FinalSession
 import org.walkpadhealth.protocol.Profile
 import org.walkpadhealth.protocol.SessionSummary
 import org.walkpadhealth.protocol.SessionTracker
 import org.walkpadhealth.protocol.TelemetryMerger
 import org.walkpadhealth.protocol.UrevoDriver
-import org.walkpadhealth.protocol.finalize
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.ConcurrentLinkedQueue
 
 @SuppressLint("MissingPermission") // btGranted() is checked in onStartCommand before any BLE call
 class WalkService : Service() {
@@ -105,14 +102,14 @@ class WalkService : Service() {
     private var destroyed = false                  // stale posts from the old BLE manager must not revive a stopped service
     private var tickCount = 0
     private var last = Live()
-    private val unsaved = ConcurrentLinkedQueue<FinalSession>()
-    private val flushLock = Mutex()
+    private val store by lazy { AppDb.get(this).let { SessionStore(it.sessions(), it.profile()) } }
+    @Volatile private var profile = Profile.DEFAULT    // live display only; saved walks read the stored profile at save time
 
     private val ticker = object : Runnable {
         override fun run() {
             if (destroyed) return
             tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
-            if (++tickCount % 30 == 0 && unsaved.isNotEmpty()) flushUnsaved()
+            if (++tickCount % 30 == 0 && store.hasPending) flush()
             publish(); main.postDelayed(this, 1000)
         }
     }
@@ -148,8 +145,8 @@ class WalkService : Service() {
         try { startInForeground() } catch (e: SecurityException) { LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY }
         prefs = AppPrefs(this)
         log = FrameLog(File(filesDir, "raw"))
-        scope.launch { AppDb.cachedProfile = AppDb.get(this@WalkService).profile().get()?.toProfile() }
         if (manager == null) {
+            scope.launch { AppDb.get(this@WalkService).profile().observe().collect { profile = it?.toProfile() ?: Profile.DEFAULT } }
             manager = newManager()
             main.post(ticker)
             findPad()
@@ -269,28 +266,16 @@ class WalkService : Service() {
         scanning = false
     }
 
-    private fun persist(s: SessionSummary) {
-        // Tracker times are monotonic. Stored start is the epoch time captured when the session began; end = start + monotonic duration.
-        val profile = AppDb.cachedProfile ?: Profile.DEFAULT
-        unsaved.add(s.copy(startMs = s.wallStartMs, endMs = s.wallStartMs + (s.endMs - s.startMs)).finalize(profile))
-        flushUnsaved()
-    }
+    private fun persist(s: SessionSummary) { store.enqueue(s); flush() }
 
-    /**
-     * Inserts queued sessions in order. A failed insert (for example storage full) leaves the session queued, shows a notification,
-     * and is retried every 30 s. A process death while storage is full loses the queued sessions; that cannot be avoided without storage.
-     */
-    private fun flushUnsaved() {
+    /** A failed save (for example storage full) shows a notification and is retried every 30 s by the ticker. */
+    private fun flush() {
         scope.launch {
-            flushLock.withLock {
-                val db = AppDb.get(this@WalkService)
-                while (true) {
-                    val next = unsaved.peek() ?: break
-                    try { db.sessions().insert(next.toEntity()); unsaved.poll() }
-                    catch (e: Exception) { notifyStorageFull(); return@launch }
-                }
+            when (store.flush()) {
+                FlushResult.SAVED -> SyncScheduler.enqueue(this@WalkService)
+                FlushResult.FAILED -> notifyStorageFull()
+                FlushResult.NOTHING -> {}
             }
-            SyncScheduler.enqueue(this@WalkService)
         }
     }
 
@@ -302,7 +287,7 @@ class WalkService : Service() {
 
     private fun publish() {
         val p = tracker.progress()
-        val prof = AppDb.cachedProfile ?: Profile.DEFAULT
+        val prof = profile
         LiveState.flow.value = last.copy(
             activeSec = p.activeSec, distanceM = p.distanceM,
             steps = Estimators.steps(p.distanceM, prof.heightCm), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), prof.weightKg),

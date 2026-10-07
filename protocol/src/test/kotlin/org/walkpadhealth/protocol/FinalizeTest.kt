@@ -32,6 +32,13 @@ class FinalizeTest {
         assertEquals(Source.ESTIMATED, f.kcalSource)
     }
 
+    @Test fun wallClockTimesKeepTheMonotonicDuration() {
+        val s = SessionSummary(5_000, 65_000, 55, 0.0, null, null, null, wallStartMs = 1_700_000_000_000)
+        val w = s.withWallClock()
+        assertEquals(1_700_000_000_000L, w.startMs); assertEquals(1_700_000_060_000L, w.endMs)
+        assertEquals(55L, w.activeSec)
+    }
+
     @Test fun badProfileGivesZeroEstimatesNotNaN() {
         val f = sum().finalize(Profile(Double.NaN, -5.0))
         assertEquals(0, f.steps); assertEquals(0.0, f.kcal)

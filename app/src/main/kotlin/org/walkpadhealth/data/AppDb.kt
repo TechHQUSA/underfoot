@@ -12,9 +12,6 @@ abstract class AppDb : RoomDatabase() {
 
     companion object {
         @Volatile private var inst: AppDb? = null
-        /** Last saved profile, so the service can show live estimates without a DB read. */
-        @Volatile var cachedProfile: org.walkpadhealth.protocol.Profile? = null
-
         fun get(ctx: Context): AppDb = inst ?: synchronized(this) {
             inst ?: Room.databaseBuilder(ctx.applicationContext, AppDb::class.java, "walkpad.db").build().also { inst = it }
         }

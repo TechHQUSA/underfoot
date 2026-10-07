@@ -32,7 +32,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun saveProfile(weightKg: Double, heightCm: Double) = viewModelScope.launch {
         if (weightKg in 20.0..300.0 && heightCm in 80.0..250.0) {
             val e = ProfileEntity(weightKg = weightKg, heightCm = heightCm)
-            db.profile().upsert(e); AppDb.cachedProfile = e.toProfile()
+            db.profile().upsert(e)
         }
     }
 }

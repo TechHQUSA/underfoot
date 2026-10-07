@@ -17,6 +17,12 @@ data class SessionSummary(
     val wallStartMs: Long = 0L,   // epoch time at the start frame; startMs/endMs are monotonic
 )
 
+/**
+ * The tracker's start and end are monotonic, so they cannot be stored. Stored start is the wall clock captured when the walk began,
+ * and the end keeps the monotonic duration, so a clock change during a walk cannot move or reverse the times.
+ */
+fun SessionSummary.withWallClock(): SessionSummary = copy(startMs = wallStartMs, endMs = wallStartMs + (endMs - startMs))
+
 data class FinalSession(
     val startMs: Long,
     val endMs: Long,
