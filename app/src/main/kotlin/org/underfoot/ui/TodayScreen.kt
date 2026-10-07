@@ -243,7 +243,7 @@ fun TodayScreen(
     }
 }
 
-@Composable private fun Tile(icon: ImageVector, value: String, unit: String, label: String, modifier: Modifier) {
+@Composable internal fun Tile(icon: ImageVector, value: String, unit: String, label: String, modifier: Modifier) {
     Card(
         modifier, shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -300,18 +300,3 @@ fun TodayScreen(
         }
     }
 }
-
-@Composable fun SessionRow(s: SessionEntity, imperial: Boolean) = ListItem(
-    headlineContent = {
-        Text(stringResource(R.string.session_summary, fmtDuration(s.activeSec), fmtDistance(s.distanceM, imperial),
-            stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), s.steps, s.kcal))
-    },
-    supportingContent = {
-        val est = listOf(s.distanceSource, s.stepsSource, s.kcalSource).count { it == "ESTIMATED" }
-        val notes = buildList {
-            if (est > 0) add(stringResource(R.string.session_estimated, est))
-            if (!s.synced) add(stringResource(R.string.session_not_synced))
-        }
-        Text((listOf(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(s.startMs))) + notes).joinToString(" - "))
-    },
-)

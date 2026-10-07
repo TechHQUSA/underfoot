@@ -2,6 +2,16 @@ package org.underfoot.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Context
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.BorderStroke
 import android.content.Intent
 import android.net.Uri
 import java.util.Locale
@@ -20,7 +30,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -85,31 +94,79 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     }
     val num = KeyboardOptions(keyboardType = KeyboardType.Decimal)
 
-    Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(stringResource(R.string.settings_profile_title), style = MaterialTheme.typography.titleMedium)
-        Row { Text(stringResource(R.string.use_imperial), Modifier.weight(1f)); Switch(imperial, { imperial = it; prefs.imperial = it }) }
-        OutlinedTextField(w, { w = it }, label = { Text(stringResource(if (imperial) R.string.label_weight_lb else R.string.label_weight_kg)) }, keyboardOptions = num, singleLine = true)
-        OutlinedTextField(h, { h = it }, label = { Text(stringResource(if (imperial) R.string.label_height_in else R.string.label_height_cm)) }, keyboardOptions = num, singleLine = true)
-        Button(onClick = {
-            val wv = w.toDoubleOrNull() ?: 0.0
-            val hv = h.toDoubleOrNull() ?: 0.0
-            onSave(if (imperial) lbToKg(wv) else wv, if (imperial) inToCm(hv) else hv)
-        }) { Text(stringResource(R.string.save_profile)) }
-        HorizontalDivider()
-        // Without the Health Connect app (Android 9-13) the permission contract has nowhere to go and launch() would throw.
-        when (hcState) {
-            null -> FilledTonalButton(onClick = {}, enabled = false) { Text(stringResource(R.string.hc_checking)) }
-            HcState.CONNECTED -> FilledTonalButton(onClick = {}, enabled = false) {
-                Icon(Icons.Filled.Check, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.hc_connected))
+    Column(
+        Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        Text(stringResource(R.string.tab_settings), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+
+        Section(stringResource(R.string.settings_section_profile), stringResource(R.string.settings_profile_hint)) {
+            SwitchRow(stringResource(R.string.use_imperial), null, imperial) { imperial = it; prefs.imperial = it }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(w, { w = it }, Modifier.weight(1f), label = { Text(stringResource(if (imperial) R.string.label_weight_lb else R.string.label_weight_kg)) }, keyboardOptions = num, singleLine = true)
+                OutlinedTextField(h, { h = it }, Modifier.weight(1f), label = { Text(stringResource(if (imperial) R.string.label_height_in else R.string.label_height_cm)) }, keyboardOptions = num, singleLine = true)
             }
-            HcState.NEEDS_PERMISSION -> Button(onClick = { hc.launch(HEALTH_PERMISSIONS) }) { Text(stringResource(R.string.allow_hc)) }
-            HcState.UNAVAILABLE -> Button(onClick = { openHealthConnectPage(ctx) }) { Text(stringResource(R.string.install_hc)) }
+            Button(onClick = {
+                val wv = w.toDoubleOrNull() ?: 0.0
+                val hv = h.toDoubleOrNull() ?: 0.0
+                onSave(if (imperial) lbToKg(wv) else wv, if (imperial) inToCm(hv) else hv)
+            }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.save_profile)) }
         }
-        HorizontalDivider()
-        Row { Text(stringResource(R.string.record_auto), Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }) }
-        OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }) { Text(stringResource(R.string.forget_pad)) }
-        Row { Text(stringResource(R.string.settings_controls), Modifier.weight(1f)); Switch(controls, { controls = it; prefs.controlsEnabled = it }) }
-        Row { Text(stringResource(R.string.offer_crash), Modifier.weight(1f)); Switch(crash, { crash = it; prefs.crashOffer = it }) }
-        Text(stringResource(R.string.version_label, BuildConfig.VERSION_NAME), Modifier.clickable { if (++taps >= 7) { taps = 0; onOpenRawLog() } })
+
+        Section(stringResource(R.string.settings_section_health), null) {
+            // Without the Health Connect app (Android 9-13) the permission contract has nowhere to go and launch() would throw.
+            val full = Modifier.fillMaxWidth().height(48.dp)
+            when (hcState) {
+                null -> FilledTonalButton(onClick = {}, full, enabled = false) { Text(stringResource(R.string.hc_checking)) }
+                HcState.CONNECTED -> FilledTonalButton(onClick = {}, full, enabled = false) {
+                    Icon(Icons.Filled.Check, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.hc_connected))
+                }
+                HcState.NEEDS_PERMISSION -> Button(onClick = { hc.launch(HEALTH_PERMISSIONS) }, full, shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.allow_hc)) }
+                HcState.UNAVAILABLE -> Button(onClick = { openHealthConnectPage(ctx) }, full, shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.install_hc)) }
+            }
+        }
+
+        Section(stringResource(R.string.settings_section_pad), null) {
+            SwitchRow(stringResource(R.string.record_auto), stringResource(R.string.record_auto_hint), auto) { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }
+            SwitchRow(stringResource(R.string.settings_controls), stringResource(R.string.settings_controls_hint), controls) { controls = it; prefs.controlsEnabled = it }
+            OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) {
+                Text(stringResource(R.string.forget_pad))
+            }
+        }
+
+        Section(stringResource(R.string.settings_section_privacy), null) {
+            SwitchRow(stringResource(R.string.offer_crash), stringResource(R.string.offer_crash_hint), crash) { crash = it; prefs.crashOffer = it }
+        }
+
+        Text(
+            stringResource(R.string.app_name) + " - " + stringResource(R.string.version_label, BuildConfig.VERSION_NAME),
+            Modifier.fillMaxWidth().clickable { if (++taps >= 7) { taps = 0; onOpenRawLog() } }.padding(vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable private fun Section(title: String, hint: String?, content: @Composable ColumnScope.() -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        Card(
+            Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+        ) { Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            content()
+        } }
+    }
+}
+
+@Composable private fun SwitchRow(title: String, hint: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title)
+            if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked, onChange)
     }
 }
