@@ -72,11 +72,11 @@ class CommandGate(private val minGapMs: Long = 1_000) {
     }
 }
 
-/** The speeds a person can ask for. The pad tops out at 4.0 mph; the lower limit is the slowest speed seen on the console. */
+/** The speeds a person can ask for. The pad tops out at 4.0 mph; the lower limit, 0.6 mph, is the slowest this model runs. */
 object SpeedTarget {
     const val MPH_TO_KMH = 1.609344
     const val MAX_KMH = 4.0 * MPH_TO_KMH
-    const val MIN_KMH = 0.5 * MPH_TO_KMH
+    const val MIN_KMH = 0.6 * MPH_TO_KMH
 
     private fun unit(imperial: Boolean) = if (imperial) MPH_TO_KMH else 1.0
 
