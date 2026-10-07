@@ -180,17 +180,23 @@ fun TodayScreen(
 
 /** Pause (Resume while paused) and Stop. Each does only what a tap says; the screen never sends anything by itself. */
 @Composable private fun Controls(live: Live, allowed: Set<PadCommand>, onCommand: (PadCommand) -> Unit) {
-    val showResume = live.status == BeltStatus.PAUSED || live.status == BeltStatus.PAUSING
-    val main = if (showResume) PadCommand.RESUME else PadCommand.PAUSE
+    val main = when (live.status) {
+        BeltStatus.IDLE, BeltStatus.STOPPED -> PadCommand.START
+        BeltStatus.PAUSED, BeltStatus.PAUSING -> PadCommand.RESUME
+        else -> PadCommand.PAUSE
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.Top) {
             Button(
                 onClick = { onCommand(main) }, enabled = main in allowed,
                 modifier = Modifier.weight(1f).height(64.dp), shape = RoundedCornerShape(32.dp),
             ) {
-                Icon(if (showResume) Icons.Filled.PlayArrow else Icons.Filled.Pause, contentDescription = null)
+                Icon(if (main == PadCommand.PAUSE) Icons.Filled.Pause else Icons.Filled.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(10.dp))
-                Text(stringResource(if (showResume) R.string.btn_resume else R.string.btn_pause), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(when (main) { PadCommand.START -> R.string.btn_start; PadCommand.RESUME -> R.string.btn_resume; else -> R.string.btn_pause }),
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold,
+                )
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 FilledIconButton(

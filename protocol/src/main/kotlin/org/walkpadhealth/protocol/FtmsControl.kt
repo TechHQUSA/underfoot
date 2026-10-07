@@ -1,6 +1,6 @@
 package org.walkpadhealth.protocol
 
-enum class PadCommand { PAUSE, RESUME, STOP }
+enum class PadCommand { START, PAUSE, RESUME, STOP }
 
 /**
  * The only commands the app ever sends to the pad, through the standard FTMS Control Point (0x2AD9). All three were measured on a
@@ -12,7 +12,7 @@ object FtmsControl {
 
     fun frame(c: PadCommand): ByteArray = when (c) {
         PadCommand.PAUSE -> byteArrayOf(0x08, 0x02)
-        PadCommand.RESUME -> byteArrayOf(0x07)
+        PadCommand.START, PadCommand.RESUME -> byteArrayOf(0x07)       // FTMS "start or resume": the same bytes
         PadCommand.STOP -> byteArrayOf(0x08, 0x01)
     }
 
@@ -32,6 +32,7 @@ object FtmsControl {
      * the belt was already in; a stop from anything but a moving belt is confirmed only by the walk actually ending.
      */
     fun confirmedBy(c: PadCommand, before: BeltStatus, now: BeltStatus): Boolean = when (c) {
+        PadCommand.START -> (before == BeltStatus.IDLE || before == BeltStatus.STOPPED) && (now == BeltStatus.STARTING || now == BeltStatus.RUNNING)
         PadCommand.PAUSE -> before == BeltStatus.RUNNING && (now == BeltStatus.PAUSING || now == BeltStatus.PAUSED)
         PadCommand.RESUME -> (before == BeltStatus.PAUSED || before == BeltStatus.PAUSING) && (now == BeltStatus.STARTING || now == BeltStatus.RUNNING)
         PadCommand.STOP ->
@@ -45,7 +46,7 @@ object FtmsControl {
         status == BeltStatus.RUNNING -> setOf(PadCommand.PAUSE, PadCommand.STOP)
         status == BeltStatus.PAUSED -> setOf(PadCommand.RESUME, PadCommand.STOP)
         status == BeltStatus.PAUSING || status == BeltStatus.STARTING || status == BeltStatus.UNKNOWN -> setOf(PadCommand.STOP)
-        else -> emptySet()
+        else -> setOf(PadCommand.START)                                // idle or stopped
     }
 }
 

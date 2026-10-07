@@ -17,12 +17,13 @@
     <string name="today_title">Today</string>
     <string name="status_paused">Paused</string>
     <string name="status_starting">Get ready...</string>
+    <string name="btn_start">Start</string>
     <string name="btn_pause">Pause</string>
     <string name="btn_resume">Resume</string>
     <string name="btn_stop">Stop</string>
     <string name="cmd_not_confirmed">The pad did not respond.</string>
     <string name="cmd_failed">The pad refused the command.</string>
-    <string name="settings_controls">Pad controls (Pause and Stop buttons)</string>
+    <string name="settings_controls">Pad controls (Start, Pause, Stop buttons)</string>
     <string name="tab_today">Walk</string>
     <string name="tab_history">History</string>
     <string name="tab_settings">Settings</string>

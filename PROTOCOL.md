@@ -48,10 +48,11 @@ with indications turned off). All three worked after `00` (request control):
 - `07` resume: the belt starts moving again.
 - `08 01` stop: the belt slows down and the console shows END, which is the pad's own end-of-workout, unlike the console's Stop
   button, which only pauses.
-Not yet measured: the exact indications the pad sends back, and the `fff1` status after stop.
+Start from idle (`07` after the walk ended) is sent by the app's Start button; it has not been measured yet, so the first run
+should be done with an empty belt. Not yet measured either: the exact indications the pad sends back, and the `fff1` status after stop.
 
 ## Safety
-The app writes only: the two handshake frames, and, on a button tap, `00` (once per connection), `08 02` (Pause), `07` (Resume)
+The app writes only: the two handshake frames, and, on a button tap, `00` (once per connection), `08 02` (Pause), `07` (Start or Resume)
 and `08 01` (Stop). It never sends a command on its own. Pause/Resume are rate-limited to one per second; Stop never is. Which
 buttons are active depends on the belt status (`FtmsControl.allowed`), and Settings can turn the buttons off entirely.
 

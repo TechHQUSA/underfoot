@@ -12,6 +12,7 @@ class FtmsControlTest {
         assertContentEquals(byteArrayOf(0x00), FtmsControl.requestControl)
         assertContentEquals(byteArrayOf(0x08, 0x02), FtmsControl.frame(PadCommand.PAUSE))
         assertContentEquals(byteArrayOf(0x07), FtmsControl.frame(PadCommand.RESUME))
+        assertContentEquals(byteArrayOf(0x07), FtmsControl.frame(PadCommand.START))             // FTMS "start or resume"
         assertContentEquals(byteArrayOf(0x08, 0x01), FtmsControl.frame(PadCommand.STOP))
     }
 
@@ -39,8 +40,14 @@ class FtmsControlTest {
         assertEquals(setOf(PadCommand.STOP), FtmsControl.allowed(BeltStatus.PAUSING, true))
         assertEquals(setOf(PadCommand.STOP), FtmsControl.allowed(BeltStatus.STARTING, true))
         assertEquals(setOf(PadCommand.STOP), FtmsControl.allowed(BeltStatus.UNKNOWN, true))      // unsure the belt is still: allow the safe action
-        assertEquals(emptySet(), FtmsControl.allowed(BeltStatus.IDLE, true))
-        assertEquals(emptySet(), FtmsControl.allowed(BeltStatus.STOPPED, true))
+        assertEquals(setOf(PadCommand.START), FtmsControl.allowed(BeltStatus.IDLE, true))       // only an idle belt can be started
+        assertEquals(setOf(PadCommand.START), FtmsControl.allowed(BeltStatus.STOPPED, true))
+    }
+
+    @Test fun startIsConfirmedOnlyByTheCountdownOrTheBeltMoving() {
+        assertTrue(confirmed(PadCommand.START, BeltStatus.IDLE, BeltStatus.STARTING)); assertTrue(confirmed(PadCommand.START, BeltStatus.STOPPED, BeltStatus.RUNNING))
+        assertFalse(confirmed(PadCommand.START, BeltStatus.IDLE, BeltStatus.IDLE))
+        assertFalse(confirmed(PadCommand.START, BeltStatus.PAUSED, BeltStatus.RUNNING))         // that is Resume, not Start
     }
 
     private fun confirmed(c: PadCommand, before: BeltStatus, now: BeltStatus) = FtmsControl.confirmedBy(c, before, now)
