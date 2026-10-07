@@ -41,7 +41,11 @@ import org.walkpadhealth.data.AppDb
 import org.walkpadhealth.data.toEntity
 import org.walkpadhealth.data.toProfile
 import org.walkpadhealth.health.SyncScheduler
+import org.walkpadhealth.CommandResult
 import org.walkpadhealth.protocol.BeltStatus
+import org.walkpadhealth.protocol.CommandGate
+import org.walkpadhealth.protocol.FtmsControl
+import org.walkpadhealth.protocol.PadCommand
 import org.walkpadhealth.protocol.Estimators
 import org.walkpadhealth.protocol.FinalSession
 import org.walkpadhealth.protocol.Profile
@@ -63,6 +67,14 @@ class WalkService : Service() {
                     .all { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
             else ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+        const val ACTION_COMMAND = "org.walkpadhealth.COMMAND"
+        const val EXTRA_COMMAND = "command"
+
+        /** Called from the UI on a button tap. The service is not exported, so only this app can send it. */
+        fun command(ctx: Context, cmd: PadCommand) {
+            ctx.startService(Intent(ctx, WalkService::class.java).setAction(ACTION_COMMAND).putExtra(EXTRA_COMMAND, cmd.name))
+        }
+
         /** Single entry point for the UI, the boot receiver and the auto-record toggle. */
         fun sync(ctx: Context, prefs: AppPrefs) {
             val i = Intent(ctx, WalkService::class.java)
@@ -78,6 +90,9 @@ class WalkService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tracker = SessionTracker()
     private val merger = TelemetryMerger()
+    private val gate = CommandGate()
+    private var pendingCmd: PadCommand? = null
+    private var cmdSeq = 0
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
     private var manager: PadManager? = null
@@ -134,11 +149,46 @@ class WalkService : Service() {
         scope.launch { AppDb.cachedProfile = AppDb.get(this@WalkService).profile().get()?.toProfile() }
         if (manager == null) {
             manager = PadManager(this,
-                { b -> main.post { handleFff1(b) } }, { b -> main.post { handleFtms(b) } }, { c -> main.post { handleConnection(c) } })
+                { b -> main.post { handleFff1(b) } }, { b -> main.post { handleFtms(b) } }, { c -> main.post { handleConnection(c) } },
+                { b -> main.post { handleControlReply(b) } })
             main.post(ticker)
             findPad()
         }
+        if (intent?.action == ACTION_COMMAND) {
+            runCatching { PadCommand.valueOf(intent.getStringExtra(EXTRA_COMMAND) ?: "") }.getOrNull()?.let(::runCommand)
+        }
         return START_STICKY
+    }
+
+    /**
+     * Runs one tap on Pause, Resume or Stop. Only what the current belt status allows is sent, Pause/Resume are rate-limited, and
+     * nothing is ever sent by the app on its own. The outcome shows as a message only when the pad did not respond or refused.
+     */
+    private fun runCommand(cmd: PadCommand) {
+        if (!prefs.controlsEnabled || cmd !in FtmsControl.allowed(last.status, last.connected)) return
+        if (!gate.accept(cmd, SystemClock.elapsedRealtime())) return
+        val m = manager ?: return
+        pendingCmd = cmd
+        val seq = ++cmdSeq
+        m.send(cmd) { written -> main.post { if (!written && pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.FAILED) } }
+        main.postDelayed({ if (pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.NOT_CONFIRMED) }, 2_500)
+    }
+
+    private fun finishCommand(result: CommandResult) {
+        pendingCmd = null
+        last = last.copy(commandResult = result)
+        publish()
+        if (result != CommandResult.OK) main.postDelayed({
+            if (last.commandResult == result) { last = last.copy(commandResult = CommandResult.NONE); publish() }
+        }, 4_000)
+    }
+
+    private fun handleControlReply(bytes: ByteArray) {
+        if (destroyed) return
+        val r = FtmsControl.parseReply(bytes) ?: return
+        val cmd = pendingCmd ?: return
+        if (r.opcode != FtmsControl.opcode(cmd)) return      // the reply to the request-control write (opcode 0) and anything stale
+        finishCommand(if (r.ok) CommandResult.OK else CommandResult.FAILED)
     }
 
     private fun handleFff1(bytes: ByteArray) {
@@ -148,6 +198,7 @@ class WalkService : Service() {
         val t = merger.merge(UrevoDriver.decodeFff1(bytes) ?: return)
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
         last = last.copy(status = t.status, speedKmh = if (t.status == BeltStatus.RUNNING) (t.speedKmh ?: 0.0) else 0.0)
+        pendingCmd?.let { if (FtmsControl.confirmedBy(it, t.status)) finishCommand(CommandResult.OK) }   // some pads never reply on the control point
         publish()
     }
 

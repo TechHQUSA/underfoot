@@ -6,6 +6,9 @@ import org.walkpadhealth.protocol.BeltStatus
 
 enum class Problem { NONE, BLUETOOTH_OFF, PERMISSION, SCAN_FAILED }
 
+/** Outcome of the last Pause/Resume/Stop tap. OK is not shown; the other two are. */
+enum class CommandResult { NONE, OK, NOT_CONFIRMED, FAILED }
+
 data class Live(
     val problem: Problem = Problem.NONE,
     val connected: Boolean = false,
@@ -19,6 +22,7 @@ data class Live(
     val fff1Frames: Int = 0,
     val ftmsFrames: Int = 0,
     val lastFff1Len: Int = 0,
+    val commandResult: CommandResult = CommandResult.NONE,
 )
 
 object LiveState { val flow = MutableStateFlow(Live()) }

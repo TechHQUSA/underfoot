@@ -10,6 +10,9 @@ class AppPrefs(ctx: Context) {
         get() = p.getBoolean("rawlog", false); set(v) = p.edit().putBoolean("rawlog", v).apply()
     var crashOffer: Boolean
         get() = p.getBoolean("crash", true); set(v) = p.edit().putBoolean("crash", v).apply()
+    /** Show Pause and Stop buttons. Off means the app stays read-only. */
+    var controlsEnabled: Boolean
+        get() = p.getBoolean("controls", true); set(v) = p.edit().putBoolean("controls", v).apply()
     /** Display units only; everything is stored in metric. */
     var imperial: Boolean
         get() = p.getBoolean("imperial", true); set(v) = p.edit().putBoolean("imperial", v).apply()

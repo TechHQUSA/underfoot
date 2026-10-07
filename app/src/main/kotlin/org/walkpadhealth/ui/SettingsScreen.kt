@@ -74,6 +74,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     }
     var auto by remember { mutableStateOf(prefs.autoRecord) }
     var crash by remember { mutableStateOf(prefs.crashOffer) }
+    var controls by remember { mutableStateOf(prefs.controlsEnabled) }
     var taps by remember { mutableIntStateOf(0) }
     var hcState by remember { mutableStateOf<HcState?>(null) }
     var hcRefresh by remember { mutableIntStateOf(0) }
@@ -107,6 +108,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         HorizontalDivider()
         Row { Text(stringResource(R.string.record_auto), Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }) }
         OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }) { Text(stringResource(R.string.forget_pad)) }
+        Row { Text(stringResource(R.string.settings_controls), Modifier.weight(1f)); Switch(controls, { controls = it; prefs.controlsEnabled = it }) }
         Row { Text(stringResource(R.string.offer_crash), Modifier.weight(1f)); Switch(crash, { crash = it; prefs.crashOffer = it }) }
         Text(stringResource(R.string.version_label, BuildConfig.VERSION_NAME), Modifier.clickable { if (++taps >= 7) { taps = 0; onOpenRawLog() } })
     }

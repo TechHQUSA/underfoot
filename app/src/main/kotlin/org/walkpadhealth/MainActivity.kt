@@ -100,7 +100,10 @@ class MainActivity : ComponentActivity() {
         }) { pad ->
             Box(Modifier.padding(pad)) {
                 when {
-                    tab == 0 -> TodayScreen(live, today, sessions, profile != null, prefs.imperial)
+                    tab == 0 -> TodayScreen(
+                        live, today, profile != null, prefs.imperial, prefs.controlsEnabled,
+                        onCommand = { WalkService.command(this@MainActivity, it) }, onOpenSettings = { tab = 2 },
+                    )
                     tab == 1 -> HistoryScreen(sessions, prefs.imperial)
                     rawLog -> RawLogScreen(prefs) { rawLog = false }
                     else -> SettingsScreen(profile, prefs, { w, h -> vm.saveProfile(w, h) }, { rawLog = true })

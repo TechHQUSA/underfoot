@@ -9,11 +9,21 @@
     <string name="problem_scan">Could not scan for your pad. Turn automatic recording off and on to retry.</string>
     <string name="looking_for_pad">Looking for your pad...</string>
     <string name="walking">Walking</string>
-    <string name="connected">Connected</string>
+    <string name="connected">Connected locally</string>
     <string name="connected_idle">Connected. Start the belt to begin recording.</string>
     <string name="set_profile_hint">Set your weight and height in Settings for better estimates.</string>
 
-    <string name="tab_today">Today</string>
+    <string name="app_title">Walking Pad</string>
+    <string name="today_title">Today</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_starting">Get ready...</string>
+    <string name="btn_pause">Pause</string>
+    <string name="btn_resume">Resume</string>
+    <string name="btn_stop">Stop</string>
+    <string name="cmd_not_confirmed">The pad did not respond.</string>
+    <string name="cmd_failed">The pad refused the command.</string>
+    <string name="settings_controls">Pad controls (Pause and Stop buttons)</string>
+    <string name="tab_today">Walk</string>
     <string name="tab_history">History</string>
     <string name="tab_settings">Settings</string>
 

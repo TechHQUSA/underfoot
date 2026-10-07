@@ -51,7 +51,9 @@ with indications turned off). All three worked after `00` (request control):
 Not yet measured: the exact indications the pad sends back, and the `fff1` status after stop.
 
 ## Safety
-Until control is built, the app never sends control commands; the only writes are the two handshake frames above.
+The app writes only: the two handshake frames, and, on a button tap, `00` (once per connection), `08 02` (Pause), `07` (Resume)
+and `08 01` (Stop). It never sends a command on its own. Pause/Resume are rate-limited to one per second; Stop never is. Which
+buttons are active depends on the belt status (`FtmsControl.allowed`), and Settings can turn the buttons off entirely.
 
 ## Still unknown
 - Whether the pad ever leaves `0A` by itself (it stayed there for over a minute), and what `01` (stopped) means.
