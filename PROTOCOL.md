@@ -52,9 +52,13 @@ with indications turned off). All three worked after `00` (request control):
 Start from idle (`07` after the walk ended) also works: the pad runs its countdown and starts the belt (measured with the app's Start
 button). Not yet measured: the exact indications the pad sends back, and the `fff1` status after stop.
 
+## Connection
+Request an MTU of 247 right after connecting. The 25-byte running frame on `fff1` does not fit the default 23-byte payload, and without
+the request the pad connects and shows idle pings but never delivers a running frame (measured on a URTM059).
+
 ## Safety
 The app writes only: the two handshake frames, and, on a button tap, `00` (once per connection), `08 02` (Pause), `07` (Start or Resume),
-`08 01` (Stop) and `02 <speed>` (Set Target Speed, only while the belt runs, clamped to 0.6-4.0 mph, at most every 250 ms; the dial sends it once on release, never mid-drag). It never sends a command on its own. Pause/Resume are rate-limited to one per second; Stop never is. Which
+`08 01` (Stop) and `02 <speed>` (Set Target Speed, only while the belt runs, clamped to 0.6-4.0 mph, at most every 250 ms; the dial sends it once on release, never mid-drag). It never sends a command on its own. Start, Pause and Resume are rate-limited to one per second and a speed change to one per 250 ms; Stop never is. A speed change is accepted only while the belt runs. Which
 buttons are active depends on the belt status (`FtmsControl.allowed`), and Settings can turn the buttons off entirely.
 
 ## Still unknown

@@ -15,7 +15,7 @@ A free, open-source Android app for a UREVO walking pad (BLE name `URTM059`, "2D
 
 ### Non-goals
 - Other pad models (the driver is a class in `:protocol`, so a model can be added), iOS, wear devices, cloud sync, social features.
-- Setting the belt speed. Only Start, Pause, Resume and Stop are sent.
+- Anything beyond Start, Pause, Resume, Stop and Set Target Speed (belt speed, 0.6-4.0 mph, only while running, sent on release). No programs, no incline, no sleep timers.
 
 ## 2. Decisions
 
@@ -26,7 +26,7 @@ A free, open-source Android app for a UREVO walking pad (BLE name `URTM059`, "2D
 | Profile | Weight and height entered in Settings, stored on device. No Health Connect read permissions. |
 | Units (added) | Imperial by default (mph, miles, pounds, inches), with a Settings switch. Everything is stored in metric. |
 | Structure | Two Gradle modules: `:protocol` (pure Kotlin) and `:app`. |
-| Stack | Kotlin, Jetpack Compose + Material 3, minSdk 26, Room, Nordic Android-BLE-Library (Apache-2.0, stable). |
+| Stack | Kotlin, Jetpack Compose + Material 3, minSdk 28 (Health Connect needs it), Room, Nordic Android-BLE-Library (BSD-3-Clause, stable). |
 | Look (changed) | Dark with a lime accent and a speed dial, light variant following the system. No dynamic color. Design from the owner's mockup. |
 | Crash reports | Small custom handler: stack frames only (no exception messages), prompt after a crash, sent only on user tap through the share sheet, no server. Replaces ACRA (needs a mailto address and a dependency). |
 | License | GPL-3.0-or-later. |
@@ -83,7 +83,7 @@ Unknowns that remain: the exact control-point indications, `fff1` status after s
 - No `INTERNET` permission. The crash send uses the system share sheet.
 - No analytics, no ads, no identifiers. Data stays in the app's private Room database, excluded from cloud backup and device transfer.
 - Permissions: Bluetooth scan/connect, notifications, foreground service (connected device), boot completed, Health Connect write only.
-- The app writes to the pad only on a button tap (plus the two handshake frames and the one-time request-control write). Pause, Resume and Start are rate-limited; Stop never is.
+- The app writes to the pad only on a button tap or a finished dial drag (plus the two handshake frames and the one-time request-control write). Start, Pause and Resume are rate-limited, speed changes are limited to one per 250 ms and only while the belt runs; Stop never is.
 - Frames from the pad are untrusted input: decoders bounds-check length and ignore malformed frames; they never throw into the service.
 
 ## 9. Error handling

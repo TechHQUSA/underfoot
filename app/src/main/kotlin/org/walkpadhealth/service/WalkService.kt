@@ -103,6 +103,7 @@ class WalkService : Service() {
     private var lastSpeedMs = Long.MIN_VALUE / 2
     private var speedPending = false
     private var speedSeq = 0
+    private var profileJob: kotlinx.coroutines.Job? = null
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
     private var manager: PadManager? = null
@@ -122,6 +123,17 @@ class WalkService : Service() {
             tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
             if (++tickCount % 30 == 0 && store.hasPending) flush()
             publish(); main.postDelayed(this, 1000)
+        }
+    }
+
+    /** Bluetooth switched off or on: a scan in flight dies with the adapter, so forget it and look again once it is back. */
+    private val btState = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (destroyed) return
+            when (i.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                BluetoothAdapter.STATE_OFF -> { scanning = false; connecting = false }
+                BluetoothAdapter.STATE_ON -> findPad()
+            }
         }
     }
 
@@ -157,7 +169,9 @@ class WalkService : Service() {
         prefs = AppPrefs(this)
         log = FrameLog(File(filesDir, "raw"))
         if (manager == null) {
-            scope.launch { AppDb.get(this@WalkService).profile().observe().collect { profile = it?.toProfile() ?: Profile.DEFAULT } }
+            ContextCompat.registerReceiver(this, btState, android.content.IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            profileJob?.cancel()
+            profileJob = scope.launch { AppDb.get(this@WalkService).profile().observe().collect { profile = it?.toProfile() ?: Profile.DEFAULT } }
             manager = newManager()
             main.post(ticker)
             findPad()
@@ -213,15 +227,17 @@ class WalkService : Service() {
         val m = manager ?: return
         speedPending = true
         val seq = ++speedSeq
-        main.postDelayed({ if (speedPending && seq == speedSeq) { speedPending = false; finishCommand(CommandResult.NOT_CONFIRMED) } }, 2_500)
+        main.postDelayed({ if (speedPending && seq == speedSeq) { speedPending = false; flash(CommandResult.NOT_CONFIRMED) } }, 2_500)
         val target = kmh.coerceIn(SpeedTarget.MIN_KMH, SpeedTarget.MAX_KMH)
         try {
-            m.sendFrame(FtmsControl.setSpeedFrame(target), "SET_SPEED") { written -> main.post { if (!written) { speedPending = false; finishCommand(CommandResult.FAILED) } } }
+            m.sendFrame(FtmsControl.setSpeedFrame(target), "SET_SPEED") { written -> main.post { if (!written) { speedPending = false; flash(CommandResult.FAILED) } } }
         } catch (e: RuntimeException) { speedPending = false; recoverFromDeadGatt(e) }
     }
 
-    private fun finishCommand(result: CommandResult) {
-        pendingCmd = null
+    private fun finishCommand(result: CommandResult) { pendingCmd = null; flash(result) }
+
+    /** Shows a result message without touching the command that may still be awaiting confirmation. */
+    private fun flash(result: CommandResult) {
         last = last.copy(commandResult = result)
         publish()
         if (result != CommandResult.OK) main.postDelayed({
@@ -232,7 +248,7 @@ class WalkService : Service() {
     private fun handleControlReply(bytes: ByteArray) {
         if (destroyed) return
         val r = FtmsControl.parseReply(bytes) ?: return
-        if (r.opcode == FtmsControl.OPCODE_SET_SPEED && speedPending) { speedPending = false; if (!r.ok) finishCommand(CommandResult.FAILED); return }
+        if (r.opcode == FtmsControl.OPCODE_SET_SPEED && speedPending) { speedPending = false; if (!r.ok) flash(CommandResult.FAILED); return }
         val cmd = pendingCmd ?: return
         if (r.opcode != FtmsControl.opcode(cmd)) return      // the reply to the request-control write (opcode 0) and anything stale
         finishCommand(if (r.ok) CommandResult.OK else CommandResult.FAILED)
@@ -285,7 +301,8 @@ class WalkService : Service() {
     private fun startScan(adapter: BluetoothAdapter) {
         if (scanning) return
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(UUID.fromString("00001826-0000-1000-8000-00805f9b34fb"))).build()
-        adapter.bluetoothLeScanner?.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCb)
+        val scanner = adapter.bluetoothLeScanner ?: run { handleScanFailed(); return }
+        scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCb)
         scanning = true
     }
 
@@ -335,6 +352,8 @@ class WalkService : Service() {
 
     override fun onDestroy() {
         destroyed = true
+        profileJob?.cancel()
+        runCatching { unregisterReceiver(btState) }
         main.removeCallbacksAndMessages(null)
         stopScan()
         tracker.finish(SystemClock.elapsedRealtime())?.let(::persist)

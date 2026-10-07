@@ -55,7 +55,7 @@ class HealthConnectGateway(private val ctx: Context) : HealthGateway {
         // Recorded by a device; one stable id per record type; the version is constant because sessions are immutable.
         fun meta(kind: String) = Metadata.autoRecorded(
             Device(type = Device.TYPE_UNKNOWN, manufacturer = "UREVO", model = "Walking pad"),
-            clientRecordId = "walkpad-${s.id}-$kind", clientRecordVersion = 0L,
+            clientRecordId = "walkpad-${org.walkpadhealth.AppPrefs(ctx).installId}-${s.id}-$kind", clientRecordVersion = 0L,
         )
         val records = mutableListOf<Record>(
             ExerciseSessionRecord(

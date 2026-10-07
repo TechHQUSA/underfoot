@@ -1,6 +1,6 @@
 Walkpad Health records your walks on a UREVO walking pad and saves them to Health Connect. There is no account and no login.
 
-When the pad is on, the app connects over Bluetooth, records the session while the belt runs, and writes steps, distance, time and calories to Health Connect when you stop. Start, pause, resume and stop buttons let you control the belt from the phone; you can switch them off in Settings.
+When the pad is on, the app connects over Bluetooth, records the session while the belt runs, and writes steps, distance, time and calories to Health Connect when you stop. Start, pause, resume and stop buttons and a speed dial let you control the belt from the phone; you can switch them off in Settings.
 
 Privacy: the app has no network permission and no analytics. Crash details are shared only if you tap Send after a crash, through the system share sheet.
 
