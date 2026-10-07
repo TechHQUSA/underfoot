@@ -1865,7 +1865,10 @@ class HealthConnectGateway(private val ctx: Context) : HealthGateway {
             clientRecordId = "walkpad-${s.id}-$kind", clientRecordVersion = 0L,
         )
         val records = mutableListOf<Record>(
-            ExerciseSessionRecord(start, off, end, off, ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walking pad", metadata = meta("exercise")),
+            ExerciseSessionRecord(
+                startTime = start, startZoneOffset = off, endTime = end, endZoneOffset = off,
+                metadata = meta("exercise"), exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walking pad",
+            ),
         )
         if (s.steps > 0) records += StepsRecord(start, off, end, off, s.steps.toLong(), meta("steps"))
         if (s.distanceM > 0.0) records += DistanceRecord(start, off, end, off, Length.meters(s.distanceM), meta("distance"))
