@@ -21,6 +21,11 @@
     <string name="btn_pause">Pause</string>
     <string name="btn_resume">Resume</string>
     <string name="btn_stop">Stop</string>
+    <string name="btn_emergency_stop">Emergency stop</string>
+    <string name="speed_slower">Slower</string>
+    <string name="speed_faster">Faster</string>
+    <string name="stat_distance">Distance</string>
+    <string name="stat_energy">Active energy</string>
     <string name="cmd_not_confirmed">The pad did not respond.</string>
     <string name="cmd_failed">The pad refused the command.</string>
     <string name="settings_controls">Pad controls (Start, Pause, Stop buttons)</string>

@@ -16,6 +16,17 @@ object FtmsControl {
         PadCommand.STOP -> byteArrayOf(0x08, 0x01)
     }
 
+    /** FTMS "Set Target Speed" (opcode 02, u16 little-endian, 0.01 km/h). Not yet measured on a URTM059: a refusal shows as FAILED. */
+    fun setSpeedFrame(kmh: Double): ByteArray {
+        val v = Math.round(kmh * 100).toInt().coerceIn(0, 0xFFFF)
+        return byteArrayOf(0x02, (v and 0xFF).toByte(), (v shr 8).toByte())
+    }
+
+    const val OPCODE_SET_SPEED = 0x02
+
+    /** The belt speed can be changed only while it moves; nothing while disconnected. */
+    fun canSetSpeed(status: BeltStatus, connected: Boolean): Boolean = connected && status == BeltStatus.RUNNING
+
     fun opcode(c: PadCommand): Int = frame(c)[0].toInt()
 
     /** An indication from 0x2AD9: `80 <request opcode> <result>`; result 01 means success. */
@@ -59,4 +70,24 @@ class CommandGate(private val minGapMs: Long = 1_000) {
         lastMs = nowMs
         return true
     }
+}
+
+/** The speeds a person can ask for. The pad tops out at 4.0 mph; the lower limit is the slowest speed seen on the console. */
+object SpeedTarget {
+    const val MPH_TO_KMH = 1.609344
+    const val MAX_KMH = 4.0 * MPH_TO_KMH
+    const val MIN_KMH = 0.5 * MPH_TO_KMH
+
+    private fun unit(imperial: Boolean) = if (imperial) MPH_TO_KMH else 1.0
+
+    /** Rounds to a tenth of the displayed unit and keeps the result inside the pad's range. */
+    fun snap(kmh: Double, imperial: Boolean): Double {
+        if (!kmh.isFinite()) return MIN_KMH
+        val u = unit(imperial)
+        return (Math.round(kmh / u * 10) / 10.0 * u).coerceIn(MIN_KMH, MAX_KMH)
+    }
+
+    /** One tap on + or -: a tenth of the displayed unit. */
+    fun step(kmh: Double, direction: Int, imperial: Boolean): Double =
+        snap(Math.round(kmh / unit(imperial) * 10) / 10.0 * unit(imperial) + direction.coerceIn(-1, 1) * 0.1 * unit(imperial), imperial)
 }

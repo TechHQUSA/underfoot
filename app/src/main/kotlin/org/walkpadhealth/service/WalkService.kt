@@ -51,6 +51,7 @@ import org.walkpadhealth.protocol.Estimators
 import org.walkpadhealth.protocol.Profile
 import org.walkpadhealth.protocol.SessionSummary
 import org.walkpadhealth.protocol.SessionTracker
+import org.walkpadhealth.protocol.SpeedTarget
 import org.walkpadhealth.protocol.TelemetryMerger
 import org.walkpadhealth.protocol.UrevoDriver
 import java.io.File
@@ -67,6 +68,13 @@ class WalkService : Service() {
 
         const val ACTION_COMMAND = "org.walkpadhealth.COMMAND"
         const val EXTRA_COMMAND = "command"
+        const val ACTION_SPEED = "org.walkpadhealth.SET_SPEED"
+        const val EXTRA_SPEED_KMH = "kmh"
+
+        /** Called from the UI when a drag on the dial ends or a +/- tap settles. */
+        fun setSpeed(ctx: Context, kmh: Double) {
+            ctx.startService(Intent(ctx, WalkService::class.java).setAction(ACTION_SPEED).putExtra(EXTRA_SPEED_KMH, kmh))
+        }
 
         /** Called from the UI on a button tap. The service is not exported, so only this app can send it. */
         fun command(ctx: Context, cmd: PadCommand) {
@@ -92,6 +100,8 @@ class WalkService : Service() {
     private var pendingCmd: PadCommand? = null
     private var pendingBefore = BeltStatus.IDLE        // belt status when the pending command was sent
     private var cmdSeq = 0
+    private var lastSpeedMs = Long.MIN_VALUE / 2
+    private var speedPending = false
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
     private var manager: PadManager? = null
@@ -154,6 +164,7 @@ class WalkService : Service() {
         if (intent?.action == ACTION_COMMAND) {
             runCatching { PadCommand.valueOf(intent.getStringExtra(EXTRA_COMMAND) ?: "") }.getOrNull()?.let(::runCommand)
         }
+        if (intent?.action == ACTION_SPEED) runSetSpeed(intent.getDoubleExtra(EXTRA_SPEED_KMH, Double.NaN))
         return START_STICKY
     }
 
@@ -192,6 +203,20 @@ class WalkService : Service() {
         main.postDelayed({ if (pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.NOT_CONFIRMED) }, 2_500)
     }
 
+    /** Sets the belt speed. Only while the belt runs, only inside the pad's range, and at most every 250 ms. A refusal shows as a message. */
+    private fun runSetSpeed(kmh: Double) {
+        if (!prefs.controlsEnabled || !kmh.isFinite() || !FtmsControl.canSetSpeed(last.status, last.connected)) return
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSpeedMs < 250) return
+        lastSpeedMs = now
+        val m = manager ?: return
+        speedPending = true
+        val target = kmh.coerceIn(SpeedTarget.MIN_KMH, SpeedTarget.MAX_KMH)
+        try {
+            m.sendFrame(FtmsControl.setSpeedFrame(target), "SET_SPEED") { written -> main.post { if (!written) { speedPending = false; finishCommand(CommandResult.FAILED) } } }
+        } catch (e: RuntimeException) { speedPending = false; recoverFromDeadGatt(e) }
+    }
+
     private fun finishCommand(result: CommandResult) {
         pendingCmd = null
         last = last.copy(commandResult = result)
@@ -204,6 +229,7 @@ class WalkService : Service() {
     private fun handleControlReply(bytes: ByteArray) {
         if (destroyed) return
         val r = FtmsControl.parseReply(bytes) ?: return
+        if (r.opcode == FtmsControl.OPCODE_SET_SPEED && speedPending) { speedPending = false; if (!r.ok) finishCommand(CommandResult.FAILED); return }
         val cmd = pendingCmd ?: return
         if (r.opcode != FtmsControl.opcode(cmd)) return      // the reply to the request-control write (opcode 0) and anything stale
         finishCommand(if (r.ok) CommandResult.OK else CommandResult.FAILED)

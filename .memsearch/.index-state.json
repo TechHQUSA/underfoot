@@ -1,10 +1,10 @@
 {
   "collection": "ms_walkpad_health_45a94996",
   "failed_files": [],
-  "last_completed_at": "2026-10-07T17:05:49.320175Z",
+  "last_completed_at": "2026-10-07T21:27:04.968783Z",
   "last_error": "RuntimeError: Could not open the local Milvus database at /Users/laptop/.memsearch/milvus.db: <ConnectionConfigException: (code=1, message=Open local milvus failed)>. Milvus Lite 3.x stores a database as a directory, but this path is a file. If it is a database from Milvus Lite 2.x, move it aside and rebuild the index with 'memsearch index'. Otherwise check the configured URI, or use Milvus Server via Docker or Zilliz Cloud.",
-  "last_failed_at": "2026-10-07T17:05:49.320175Z",
-  "last_started_at": "2026-10-07T17:05:47.825077Z",
+  "last_failed_at": "2026-10-07T21:27:04.968783Z",
+  "last_started_at": "2026-10-07T21:27:03.824045Z",
   "milvus_uri": "~/.memsearch/milvus.db",
   "operation": "index",
   "paths": [
@@ -12,5 +12,5 @@
   ],
   "schema_version": 1,
   "status": "error",
-  "updated_at": "2026-10-07T17:05:49.320175Z"
+  "updated_at": "2026-10-07T21:27:04.968783Z"
 }

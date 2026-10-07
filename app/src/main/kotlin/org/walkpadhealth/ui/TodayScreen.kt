@@ -1,6 +1,22 @@
 package org.walkpadhealth.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.runtime.rememberUpdatedState
+import kotlin.math.hypot
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Color
+import kotlinx.coroutines.delay
+import org.walkpadhealth.protocol.SpeedTarget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,10 +82,11 @@ private const val DIAL_MAX_KMH = 6.44
 @Composable
 fun TodayScreen(
     live: Live, today: DayTotals, profileSet: Boolean, imperial: Boolean,
-    controlsEnabled: Boolean, onCommand: (PadCommand) -> Unit, onOpenSettings: () -> Unit,
+    controlsEnabled: Boolean, onCommand: (PadCommand) -> Unit, onSetSpeed: (Double) -> Unit, onOpenSettings: () -> Unit,
 ) {
     val allowed = FtmsControl.allowed(live.status, live.connected)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    var dragging by remember { mutableStateOf(false) }
+    LazyColumn(Modifier.fillMaxSize(), userScrollEnabled = !dragging, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { Header(live, onOpenSettings) }
         if (live.problem != Problem.NONE) item {
             Text(
@@ -84,28 +101,27 @@ fun TodayScreen(
         if (!profileSet) item { Text(stringResource(R.string.set_profile_hint), color = MaterialTheme.colorScheme.error) }
         item {
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                SpeedDial(
-                    value = fmtSpeed(live.speedKmh, imperial),
-                    unit = stringResource(if (imperial) R.string.unit_mph else R.string.unit_kmh),
-                    fraction = (live.speedKmh / DIAL_MAX_KMH).toFloat().coerceIn(0f, 1f),
-                )
+                SpeedDial(live, imperial, adjustable = controlsEnabled && FtmsControl.canSetSpeed(live.status, live.connected), onDragging = { dragging = it }, onSetSpeed = onSetSpeed)
             }
         }
         item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                StatCell(Icons.Filled.AccessTime, fmtDuration(live.activeSec), stringResource(R.string.stat_time))
-                StatCell(Icons.Filled.Straighten, fmtDistance(live.distanceM, imperial), stringResource(if (imperial) R.string.unit_mi else R.string.unit_km))
-                StatCell(Icons.Filled.LocalFireDepartment, "%.0f".format(live.kcal), stringResource(R.string.stat_kcal))
-                StatCell(Icons.Filled.DirectionsWalk, "%,d".format(live.steps), stringResource(R.string.stat_steps))
+            Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+                StatCell(Icons.Filled.AccessTime, fmtDuration(live.activeSec), stringResource(R.string.stat_time).uppercase(), Modifier.weight(1f))
+                StatDivider()
+                StatCell(Icons.Filled.Straighten, fmtDistance(live.distanceM, imperial), stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), Modifier.weight(1f))
+                StatDivider()
+                StatCell(Icons.Filled.LocalFireDepartment, "%.0f".format(live.kcal), stringResource(R.string.stat_kcal), Modifier.weight(1f))
+                StatDivider()
+                StatCell(Icons.Filled.DirectionsWalk, "%,d".format(live.steps), stringResource(R.string.stat_steps).uppercase(), Modifier.weight(1f))
             }
         }
         if (controlsEnabled) item { Controls(live, allowed, onCommand) }
         item { Text(stringResource(R.string.today_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Tile(Icons.Filled.AccessTime, fmtDuration(today.activeSec), stringResource(R.string.stat_time), Modifier.weight(1f))
-                Tile(Icons.Filled.Straighten, fmtDistance(today.distanceM, imperial), stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), Modifier.weight(1f))
-                Tile(Icons.Filled.LocalFireDepartment, "%.0f".format(today.kcal), stringResource(R.string.stat_kcal), Modifier.weight(1f))
+                Tile(Icons.Filled.AccessTime, fmtDuration(today.activeSec), "", stringResource(R.string.stat_time), Modifier.weight(1f))
+                Tile(Icons.Filled.Straighten, fmtDistance(today.distanceM, imperial), stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), stringResource(R.string.stat_distance), Modifier.weight(1f))
+                Tile(Icons.Filled.LocalFireDepartment, "%.0f".format(today.kcal), stringResource(R.string.stat_kcal), stringResource(R.string.stat_energy), Modifier.weight(1f))
             }
         }
     }
@@ -136,43 +152,100 @@ fun TodayScreen(
     }
 }
 
-@Composable private fun SpeedDial(value: String, unit: String, fraction: Float) {
+/**
+ * The speed dial. While the belt runs, drag the handle (a drag must start on it, so a stray touch cannot jump the speed) or tap
+ * - and +. The speed is sent once, when the finger lifts (or 450 ms after the last tap), never mid-drag. Otherwise it only shows
+ * the pad's speed.
+ */
+@Composable private fun SpeedDial(live: Live, imperial: Boolean, adjustable: Boolean, onDragging: (Boolean) -> Unit, onSetSpeed: (Double) -> Unit) {
+    var drag by remember { mutableStateOf<Double?>(null) }     // km/h under the finger
+    var tapped by remember { mutableStateOf<Double?>(null) }   // km/h chosen with - / +, waiting to be sent
+    LaunchedEffect(tapped) {
+        val t = tapped ?: return@LaunchedEffect
+        delay(450); onSetSpeed(t); delay(3_000); if (tapped == t) tapped = null
+    }
+    val shown = drag ?: tapped ?: live.speedKmh
+    val fraction = (shown / DIAL_MAX_KMH).toFloat().coerceIn(0f, 1f)
+    val fractionNow by rememberUpdatedState(fraction)
     val track = MaterialTheme.colorScheme.surfaceVariant
     val progress = MaterialTheme.colorScheme.primary
-    Box(Modifier.size(260.dp), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize()) {
-            val stroke = 14.dp.toPx()
-            val arc = Size(size.width - stroke, size.height - stroke)
-            val topLeft = Offset(stroke / 2, stroke / 2)
+    fun pick(x: Float, y: Float, w: Int, h: Int): Double? =
+        DialMath.fractionAtOrNull((x - w / 2.0), (y - h / 2.0))?.let { SpeedTarget.snap(it * SpeedTarget.MAX_KMH, imperial) }
+
+    Box(Modifier.size(280.dp), contentAlignment = Alignment.Center) {
+        Canvas(
+            Modifier.fillMaxSize()
+                .pointerInput(adjustable) {
+                    if (adjustable) {
+                        var grabbed = false
+                        detectDragGestures(
+                            onDragStart = { o ->
+                                val a = Math.toRadians((DialMath.START_DEG + DialMath.SWEEP_DEG * fractionNow).toDouble())
+                                val r = size.width / 2 - 16.dp.toPx()
+                                val hx = size.width / 2 + cos(a) * r; val hy = size.height / 2 + sin(a) * r
+                                grabbed = hypot(o.x - hx, o.y - hy) <= 56.dp.toPx()
+                                if (grabbed) { onDragging(true); drag = pick(o.x, o.y, size.width, size.height) }
+                            },
+                            onDrag = { c, _ -> if (grabbed) { c.consume(); pick(c.position.x, c.position.y, size.width, size.height)?.let { drag = it } } },
+                            onDragEnd = { if (grabbed) { drag?.let(onSetSpeed); drag = null; onDragging(false) }; grabbed = false },
+                            onDragCancel = { drag = null; onDragging(false); grabbed = false },
+                        )
+                    }
+                },
+        ) {
+            val stroke = 16.dp.toPx()
+            val arc = Size(size.width - stroke * 2, size.height - stroke * 2)
+            val topLeft = Offset(stroke, stroke)
             val style = Stroke(width = stroke, cap = StrokeCap.Round)
-            drawArc(track, startAngle = 135f, sweepAngle = 270f, useCenter = false, topLeft = topLeft, size = arc, style = style)
-            if (fraction > 0f) drawArc(progress, startAngle = 135f, sweepAngle = 270f * fraction, useCenter = false, topLeft = topLeft, size = arc, style = style)
-            val angle = Math.toRadians((135f + 270f * fraction).toDouble())
+            drawArc(track, startAngle = DialMath.START_DEG, sweepAngle = DialMath.SWEEP_DEG, useCenter = false, topLeft = topLeft, size = arc, style = style)
+            if (fraction > 0f) drawArc(progress, startAngle = DialMath.START_DEG, sweepAngle = DialMath.SWEEP_DEG * fraction, useCenter = false, topLeft = topLeft, size = arc, style = style)
+            val angle = Math.toRadians((DialMath.START_DEG + DialMath.SWEEP_DEG * fraction).toDouble())
             val r = arc.width / 2
-            drawCircle(progress, radius = stroke * 0.8f, center = Offset(size.width / 2 + (cos(angle) * r).toFloat(), size.height / 2 + (sin(angle) * r).toFloat()))
+            val c = Offset(size.width / 2 + (cos(angle) * r).toFloat(), size.height / 2 + (sin(angle) * r).toFloat())
+            drawCircle(progress.copy(alpha = 0.25f), radius = stroke * 1.9f, center = c)   // glow
+            drawCircle(progress, radius = stroke * 0.85f, center = c)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(value, fontSize = 72.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text(unit, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(fmtSpeed(shown, imperial), fontSize = 80.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(if (imperial) R.string.unit_mph else R.string.unit_kmh), fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (adjustable) {
+            IconButton({ tapped = SpeedTarget.step(tapped ?: live.speedKmh, -1, imperial) }, Modifier.align(Alignment.BottomStart).padding(start = 24.dp).size(52.dp)) {
+                Icon(Icons.Filled.Remove, stringResource(R.string.speed_slower), Modifier.size(30.dp))
+            }
+            IconButton({ tapped = SpeedTarget.step(tapped ?: live.speedKmh, +1, imperial) }, Modifier.align(Alignment.BottomEnd).padding(end = 24.dp).size(52.dp)) {
+                Icon(Icons.Filled.Add, stringResource(R.string.speed_faster), Modifier.size(30.dp))
+            }
         }
     }
 }
 
-@Composable private fun StatCell(icon: ImageVector, value: String, label: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+@Composable private fun StatDivider() {
+    Box(Modifier.width(1.dp).height(56.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)))
+}
+
+@Composable private fun StatCell(icon: ImageVector, value: String, label: String, modifier: Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(6.dp))
-        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
-@Composable private fun Tile(icon: ImageVector, value: String, label: String, modifier: Modifier) {
-    Card(modifier, shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+@Composable private fun Tile(icon: ImageVector, value: String, unit: String, label: String, modifier: Modifier) {
+    Card(
+        modifier, shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
+    ) {
         Column(Modifier.padding(16.dp)) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(10.dp))
-            Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                if (unit.isNotEmpty()) Text(" $unit", Modifier.padding(bottom = 3.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            }
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -206,7 +279,7 @@ fun TodayScreen(
                         containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.error,
                     ),
                 ) { Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.btn_stop)) }
-                Text(stringResource(R.string.btn_stop), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.btn_emergency_stop), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
             }
         }
         if (live.commandResult == CommandResult.NOT_CONFIRMED || live.commandResult == CommandResult.FAILED) {

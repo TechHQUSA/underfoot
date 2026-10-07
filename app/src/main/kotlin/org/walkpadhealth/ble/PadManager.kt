@@ -92,16 +92,18 @@ class PadManager(
     }
 
     /** Sends one command through the FTMS control point, requesting control first if this connection has not yet. */
-    fun send(cmd: PadCommand, onWritten: (Boolean) -> Unit) {
+    fun send(cmd: PadCommand, onWritten: (Boolean) -> Unit) = sendFrame(FtmsControl.frame(cmd), cmd.name, onWritten)
+
+    fun sendFrame(frame: ByteArray, label: String, onWritten: (Boolean) -> Unit) {
         val c = ctrl ?: run { onWritten(false); return }
         if (!controlRequested) {
             controlRequested = true
             writeCharacteristic(c, FtmsControl.requestControl, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
                 .fail { _, s -> Log.w(TAG, "request control failed: $s") }.enqueue()
         }
-        writeCharacteristic(c, FtmsControl.frame(cmd), BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+        writeCharacteristic(c, frame, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
             .done { onWritten(true) }
-            .fail { _, s -> Log.w(TAG, "$cmd failed: $s"); onWritten(false) }
+            .fail { _, s -> Log.w(TAG, "$label failed: $s"); onWritten(false) }
             .enqueue()
     }
 }
