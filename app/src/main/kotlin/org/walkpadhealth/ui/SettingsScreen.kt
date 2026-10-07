@@ -14,14 +14,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,8 +39,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import org.walkpadhealth.health.HcState
+import org.walkpadhealth.health.healthConnectState
 import org.walkpadhealth.AppPrefs
 import org.walkpadhealth.BuildConfig
 import org.walkpadhealth.R
@@ -66,7 +75,13 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     var auto by remember { mutableStateOf(prefs.autoRecord) }
     var crash by remember { mutableStateOf(prefs.crashOffer) }
     var taps by remember { mutableIntStateOf(0) }
-    val hc = rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) { SyncScheduler.enqueue(ctx) }
+    var hcState by remember { mutableStateOf<HcState?>(null) }
+    var hcRefresh by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) { hcRefresh++; onPauseOrDispose {} }          // also re-check when returning from the permission screen
+    LaunchedEffect(hcRefresh) { hcState = healthConnectState(ctx) }
+    val hc = rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) {
+        SyncScheduler.enqueue(ctx); hcRefresh++
+    }
     val num = KeyboardOptions(keyboardType = KeyboardType.Decimal)
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -81,9 +96,13 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         }) { Text(stringResource(R.string.save_profile)) }
         HorizontalDivider()
         // Without the Health Connect app (Android 9-13) the permission contract has nowhere to go and launch() would throw.
-        val hcReady = HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE
-        Button(onClick = { if (hcReady) hc.launch(HEALTH_PERMISSIONS) else openHealthConnectPage(ctx) }) {
-            Text(stringResource(if (hcReady) R.string.allow_hc else R.string.install_hc))
+        when (hcState) {
+            null -> FilledTonalButton(onClick = {}, enabled = false) { Text(stringResource(R.string.hc_checking)) }
+            HcState.CONNECTED -> FilledTonalButton(onClick = {}, enabled = false) {
+                Icon(Icons.Filled.Check, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.hc_connected))
+            }
+            HcState.NEEDS_PERMISSION -> Button(onClick = { hc.launch(HEALTH_PERMISSIONS) }) { Text(stringResource(R.string.allow_hc)) }
+            HcState.UNAVAILABLE -> Button(onClick = { openHealthConnectPage(ctx) }) { Text(stringResource(R.string.install_hc)) }
         }
         HorizontalDivider()
         Row { Text(stringResource(R.string.record_auto), Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }) }

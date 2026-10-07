@@ -23,6 +23,21 @@ val HEALTH_PERMISSIONS: Set<String> = setOf(
     HealthPermission.getWritePermission(TotalCaloriesBurnedRecord::class),
 )
 
+enum class HcState { UNAVAILABLE, NEEDS_PERMISSION, CONNECTED }
+
+/** What the Settings button should offer: install Health Connect, ask for permission, or show it is connected. */
+suspend fun healthConnectState(ctx: Context): HcState {
+    if (HealthConnectClient.getSdkStatus(ctx) != HealthConnectClient.SDK_AVAILABLE) return HcState.UNAVAILABLE
+    return try {
+        val granted = HealthConnectClient.getOrCreate(ctx).permissionController.getGrantedPermissions()
+        if (granted.containsAll(HEALTH_PERMISSIONS)) HcState.CONNECTED else HcState.NEEDS_PERMISSION
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        HcState.NEEDS_PERMISSION
+    }
+}
+
 class HealthConnectGateway(private val ctx: Context) : HealthGateway {
     private fun client(): HealthConnectClient? =
         if (HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE) HealthConnectClient.getOrCreate(ctx) else null

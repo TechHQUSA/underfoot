@@ -37,6 +37,8 @@
     <string name="save_profile">Save profile</string>
     <string name="allow_hc">Allow writing to Health Connect</string>
     <string name="install_hc">Health Connect is not installed or needs an update. Open its store page</string>
+    <string name="hc_connected">Connected to Health Connect</string>
+    <string name="hc_checking">Checking Health Connect...</string>
     <string name="record_auto">Record automatically</string>
     <string name="forget_pad">Forget paired pad</string>
     <string name="offer_crash">Offer to send crash reports</string>
