@@ -1,0 +1,7 @@
+plugins { alias(libs.plugins.kotlin.jvm) }
+kotlin { jvmToolchain(17) }
+dependencies {
+    testImplementation(kotlin("test"))
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+tasks.test { useJUnitPlatform() }

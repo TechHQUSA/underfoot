@@ -6,7 +6,7 @@
 
 **Architecture:** Two Gradle modules. `:protocol` is pure Kotlin (frame decoding, session state machine, step and calorie estimators) and is unit-tested with byte fixtures. `:app` holds BLE transport (Nordic Android-BLE-Library), a foreground service, Room storage, a Health Connect sync worker and the Compose UI.
 
-**Tech Stack:** Kotlin 2.1, Gradle 8.11 / AGP 8.7, Jetpack Compose + Material 3, Room, WorkManager, Nordic `no.nordicsemi.android:ble`, `androidx.health.connect:connect-client`, GitHub Actions.
+**Tech Stack:** Kotlin 2.1, Gradle 8.11 / AGP 8.9, Jetpack Compose + Material 3, Room, WorkManager, Nordic `no.nordicsemi.android:ble`, `androidx.health.connect:connect-client`, GitHub Actions.
 
 **Spec:** `docs/superpowers/specs/2026-10-07-walkpad-health-design.md`
 
@@ -118,7 +118,7 @@ kotlin.code.style=official
 `gradle/libs.versions.toml` (starting pins; if one fails to resolve, bump it to the latest stable on Google Maven / Maven Central and keep going):
 ```toml
 [versions]
-agp = "8.7.3"
+agp = "8.9.1"
 kotlin = "2.1.0"
 ksp = "2.1.0-1.0.29"
 composeBom = "2025.01.00"
@@ -178,7 +178,7 @@ plugins {
 }
 android {
     namespace = "org.walkpadhealth"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "org.walkpadhealth"
         minSdk = 26

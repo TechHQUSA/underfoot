@@ -25,8 +25,8 @@ A free, open-source Android app that tracks sessions on a UREVO walking pad (BLE
 | Recording | Auto: a foreground service connects when the pad is on and records while the belt runs. |
 | Profile | Weight and height entered in Settings, stored on device. No Health Connect read permissions. |
 | Structure | Two Gradle modules: `:protocol` (pure Kotlin) and `:app`. |
-| Stack | Kotlin, Jetpack Compose + Material 3, minSdk 26, Room, Nordic Kotlin BLE library (Apache-2.0). |
-| Crash reports | ACRA, dialog after a crash, send only on user tap (email or share sheet, no server). |
+| Stack | Kotlin, Jetpack Compose + Material 3, minSdk 26, Room, Nordic Android-BLE-Library (Apache-2.0, stable). |
+| Crash reports | Small custom handler: stack frames only (no exception messages), prompt after a crash, sent only on user tap through the share sheet, no server. Replaces ACRA (needs a mailto address and a dependency). |
 | License | GPL-3.0-or-later. |
 | Attribution | Protocol facts credit the TreadSpan (E1L) and urevo-darwin (5L) research. No code is copied from either. |
 | Repo | Standalone `walkpad-health`, unrelated to any other project. |
@@ -59,7 +59,7 @@ Phase 0 captures real frames with an in-app raw log before any field mapping is 
 - `data/`: Room entities `Session`, `Profile`; DAOs; a `pendingSync` flag on `Session`.
 - `health/`: Health Connect writer and a retrying `WorkManager` job.
 - `ui/`: Compose screens and view models.
-- `crash/`: ACRA setup.
+- `crash/`: custom crash handler and share-sheet prompt.
 
 ## 5. Data flow
 1. The service scans for a device named `URTM0xx` (or the stored MAC), connects, enables notifications on `fff1` and `2acd`, and writes the handshake.
