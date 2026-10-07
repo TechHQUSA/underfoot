@@ -47,6 +47,7 @@ import org.walkpadhealth.protocol.FinalSession
 import org.walkpadhealth.protocol.Profile
 import org.walkpadhealth.protocol.SessionSummary
 import org.walkpadhealth.protocol.SessionTracker
+import org.walkpadhealth.protocol.TelemetryMerger
 import org.walkpadhealth.protocol.UrevoDriver
 import org.walkpadhealth.protocol.finalize
 import java.io.File
@@ -76,6 +77,7 @@ class WalkService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tracker = SessionTracker()
+    private val merger = TelemetryMerger()
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
     private var manager: PadManager? = null
@@ -142,13 +144,17 @@ class WalkService : Service() {
     private fun handleFff1(bytes: ByteArray) {
         if (destroyed) return
         if (prefs.rawLog) log.append("fff1", bytes)
-        val t = UrevoDriver.decodeFff1(bytes) ?: return
+        val t = merger.merge(UrevoDriver.decodeFff1(bytes) ?: return)
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
         last = last.copy(status = t.status, speedKmh = if (t.status == BeltStatus.RUNNING) (t.speedKmh ?: 0.0) else 0.0)
         publish()
     }
 
-    private fun handleFtms(bytes: ByteArray) { if (!destroyed && prefs.rawLog) log.append("2acd", bytes) }
+    private fun handleFtms(bytes: ByteArray) {
+        if (destroyed) return
+        if (prefs.rawLog) log.append("2acd", bytes)
+        UrevoDriver.decodeFtms(bytes)?.let(merger::onFtms)
+    }
 
     private fun handleConnection(connected: Boolean) {
         if (destroyed) return
@@ -156,6 +162,7 @@ class WalkService : Service() {
         if (connected) { scanRetries = 0; pendingAddress?.let { prefs.padAddress = it } }   // onDeviceReady: services validated
         last = last.copy(connected = connected)
         if (!connected) {
+            merger.reset()
             tracker.onDisconnect(SystemClock.elapsedRealtime())
             last = last.copy(status = BeltStatus.IDLE, speedKmh = 0.0)
             main.postDelayed({ findPad() }, 5_000)

@@ -1,26 +1,51 @@
 # Pad protocol notes
 
-What is known about the UREVO URTM059 over Bluetooth LE, and how sure we are.
+What is known about the UREVO URTM059 over Bluetooth LE, and how sure we are. Everything below marked "measured" comes from a real
+capture (nRF Connect, 2026-10-07, see `captures/`).
 
-Credit: this builds on the TreadSpan project's E1L (URTM041) analysis and the urevo-darwin project's SpaceWalk 5L (URTM054) analysis. The three models share an OEM firmware family. No code was copied from either project; the decoder is written from the documented facts and tested against captured frames.
+Credit: the handshake and the `fff1` frame idea come from the TreadSpan project's E1L (URTM041) analysis and the urevo-darwin
+project's SpaceWalk 5L (URTM054) analysis; the three models share an OEM firmware family. No code was copied from either project.
 
-## Confirmed on URTM059 (nRF Connect, 2026-10-07)
-- Advertised name `URTM059`; the advertisement lists service `0x1826` (Fitness Machine).
-- After connecting, primary services `0x180A`, `0xFFF0`, `0xFEE0` and `0x1826` are present.
+## GATT layout (measured)
+`0x180A` Device Information, `0xFFF0` (`fff1` notify, `fff2` write), `0xFEE0` (`fee1` notify, `fee2` write-no-response, unused),
+`0x1826` Fitness Machine (`2ACD` Treadmill Data notify, `2AD3` Training Status, `2ADA` Fitness Machine Status, `2AD9` Control
+Point, `2ACC` Features). The advertisement lists `0x1826` and the name `URTM059`. While a central is connected the pad stops
+advertising, so a second app cannot see it.
 
-## Taken from the 5L / E1L research, not yet confirmed on URTM059
-- `0xFFF0`: `fff1` notifies telemetry, `fff2` is written. `fff1` stays silent until two handshake frames are written to `fff2`: `02 51 0b 03`, then `02 50 03 09 03`.
-- `fff1` frames start `02 51`. Byte 2 is the belt status (`00` idle, `01` stopped, `03` running, `04` pausing, `0a` paused). Bytes 3-4, little-endian, are the speed in tenths of km/h and are present only in frames of 19 bytes or more.
-- Elapsed time and distance sit later in the frame; their layout is only partly mapped.
+## Handshake (measured)
+Write `02 51 0B 03`, then `02 50 03 09 03`, to `fff2` (plain Write works). The pad answers the second one on `fff1` with
+`02 50 03 00 00 59 F6 03`. After that `fff1` sends a frame every second and `2ACD` about five times a second. `2ACD` data also
+flowed once the handshake had been done earlier on the same connection; whether it needs the handshake is unconfirmed.
 
-## Still to measure (Task 7, needs a capture from the pad)
-- Whether `URTM059` uses this frame layout at all.
-- Which fields the pad reports: distance, steps, calories, elapsed time.
-- Whether pad totals reset at the start of each walk or keep counting.
-- Which write type the handshake needs (`WRITE_TYPE_DEFAULT` is the first choice in the code; `WRITE_TYPE_NO_RESPONSE` is the fallback).
-- Whether `2acd` (FTMS Treadmill Data) carries distance, energy and elapsed time.
+## fff1 frames, header `02 51 <status> ...`, last byte `03` (measured)
+Status byte: `00` idle, `02` start countdown (data byte counts 3, 2, 1), `03` running, `04` pausing (belt slowing), `0A` paused.
+`01` (stopped) is assumed from the 5L notes and has not been seen.
+- 6 bytes while idle or counting down: `02 51 00 01 08 03`.
+- 25 bytes while running, pausing and paused: `02 51 <st> <speed u16> <elapsed u16> <dist u16> <kcal u16> <?? u16> 00 00 00 00 39 00 <mac4> <chk> 03`.
+  - bytes 5-6: elapsed seconds (matches the console and `2ACD`).
+  - bytes 9-10: energy in tenths of a kcal (`0x24` = 3.6; `2ACD` shows the integer part, 3).
+  - bytes 3-4: speed, but in **0.1 mph**, not km/h (raw 6 = 0.6 mph = 0.96 km/h on `2ACD`). Max seen: 40 = 4.0 mph = 6.43 km/h.
+  - bytes 7-8: distance in **0.01 mile** (steps every 16.09 m), too coarse to use.
+  - bytes 11-12: unknown, slowly counts up while the belt ramps. Not steps, not kcal. Left undecoded.
+  - bytes 19-22: the pad's own MAC address, reversed. Byte 23: checksum, algorithm unknown, ignored.
+The app takes status, elapsed and kcal from `fff1`, and speed and distance from `2ACD` in SI units, because `fff1`'s own speed and
+distance are in miles. Whether `fff1`'s unit changes if the console is switched to km is untested; the app does not depend on it.
 
-The app's hidden raw-log screen records frames to a file for this purpose (Settings, tap the version row 7 times).
+## 2ACD Treadmill Data (measured, standard FTMS)
+Flags `0x0484`: speed (0.01 km/h), total distance (u24 metres), expended energy (total kcal u16; per-hour and per-minute fields
+read `FFFF` and `FF`, meaning not available), elapsed time (u16 s). The distance and elapsed time reset to 0 when a walk starts.
+No step count: FTMS Features says steps are "supported" but Treadmill Data has no steps field. The app estimates steps from distance
+and height (marked as estimated).
+
+## Other notifications (measured, unused)
+`2ADA` sends events such as "started or resumed", "stopped or paused by the user" and "target speed changed". `2AD3` sends
+Pre-Workout (`01 0E`), Manual Mode (`01 0D`) and Other (`01 00`).
 
 ## Safety
 Version 0.1 never sends control frames. The only writes are the two handshake frames above.
+
+## Still unknown
+- Whether `01` (stopped) or `00` (idle) follows a console Stop, and how a normal end of walk looks on `fff1`.
+- Whether the pad keeps the handshake across a disconnect.
+- The meaning of `fff1` bytes 11-12 and the checksum.
+- Whether a pad set to km (console unit) changes the units of `fff1` speed and distance.
