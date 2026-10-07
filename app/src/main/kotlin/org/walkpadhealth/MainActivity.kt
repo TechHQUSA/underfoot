@@ -7,25 +7,81 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import org.walkpadhealth.health.SyncScheduler
 import org.walkpadhealth.service.WalkService
+import org.walkpadhealth.ui.HistoryScreen
+import org.walkpadhealth.ui.MainViewModel
+import org.walkpadhealth.ui.RawLogScreen
+import org.walkpadhealth.ui.SettingsScreen
+import org.walkpadhealth.ui.TodayScreen
+import org.walkpadhealth.ui.WalkpadTheme
 
 class MainActivity : ComponentActivity() {
+    private val vm: MainViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { Start() } }
+        val prefs = AppPrefs(this)
+        setContent { WalkpadTheme { App(prefs) } }
     }
 
-    @Composable private fun Start() {
+    override fun onResume() { super.onResume(); SyncScheduler.enqueue(this) }
+
+    @Composable private fun App(prefs: AppPrefs) {
         val perms = if (Build.VERSION.SDK_INT >= 31)
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            WalkService.sync(this, AppPrefs(this))          // starts only if Bluetooth permission was granted
+            WalkService.sync(this, prefs)          // starts only if Bluetooth permission was granted; otherwise Today shows why
         }
-        Button(onClick = { launcher.launch(perms) }) { Text("Start recording") }
+        LaunchedEffect(Unit) {
+            if (prefs.autoRecord) { if (WalkService.btGranted(this@MainActivity)) WalkService.sync(this@MainActivity, prefs) else launcher.launch(perms) }
+        }
+
+        val live by vm.live.collectAsStateWithLifecycle()
+        val today by vm.today.collectAsStateWithLifecycle()
+        val sessions by vm.sessions.collectAsStateWithLifecycle()
+        val profile by vm.profile.collectAsStateWithLifecycle()
+        var tab by rememberSaveable { mutableIntStateOf(0) }
+        var rawLog by rememberSaveable { mutableStateOf(false) }
+
+        Scaffold(bottomBar = {
+            NavigationBar {
+                NavigationBarItem(tab == 0, { tab = 0; rawLog = false }, { Icon(Icons.Filled.DirectionsWalk, null) }, label = { Text(stringResource(R.string.tab_today)) })
+                NavigationBarItem(tab == 1, { tab = 1; rawLog = false }, { Icon(Icons.Filled.History, null) }, label = { Text(stringResource(R.string.tab_history)) })
+                NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Filled.Settings, null) }, label = { Text(stringResource(R.string.tab_settings)) })
+            }
+        }) { pad ->
+            Box(Modifier.padding(pad)) {
+                when {
+                    tab == 0 -> TodayScreen(live, today, sessions, profile != null)
+                    tab == 1 -> HistoryScreen(sessions)
+                    rawLog -> RawLogScreen(prefs) { rawLog = false }
+                    else -> SettingsScreen(profile, prefs, { w, h -> vm.saveProfile(w, h) }, { rawLog = true })
+                }
+            }
+        }
     }
 }

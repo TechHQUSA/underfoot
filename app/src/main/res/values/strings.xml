@@ -3,4 +3,43 @@
     <string name="notif_channel">Walking pad</string>
     <string name="notif_text">Waiting for your walking pad</string>
     <string name="storage_full">Storage is full. The last walk is not saved yet; free up space soon.</string>
+
+    <string name="problem_bt_off">Bluetooth is off. Turn it on to record walks.</string>
+    <string name="problem_permission">Walkpad Health needs Bluetooth permission to find your pad. Open Settings to allow it.</string>
+    <string name="problem_scan">Could not scan for your pad. Turn automatic recording off and on to retry.</string>
+    <string name="looking_for_pad">Looking for your pad...</string>
+    <string name="walking">Walking</string>
+    <string name="connected">Connected</string>
+    <string name="connected_idle">Connected. Start the belt to begin recording.</string>
+    <string name="set_profile_hint">Set your weight and height in Settings for better estimates.</string>
+
+    <string name="tab_today">Today</string>
+    <string name="tab_history">History</string>
+    <string name="tab_settings">Settings</string>
+
+    <string name="stat_steps">Steps</string>
+    <string name="stat_time">Time</string>
+    <string name="stat_km">km</string>
+    <string name="stat_kcal">kcal</string>
+    <string name="stat_kmh">km/h</string>
+    <string name="session_summary">%1$s - %2$s km - %3$d steps - %4$.0f kcal</string>
+    <string name="session_estimated">%d estimated</string>
+    <string name="session_not_synced">not synced</string>
+
+    <string name="settings_profile_title">Profile (stays on this device)</string>
+    <string name="label_weight">Weight (kg)</string>
+    <string name="label_height">Height (cm)</string>
+    <string name="save_profile">Save profile</string>
+    <string name="allow_hc">Allow writing to Health Connect</string>
+    <string name="record_auto">Record automatically</string>
+    <string name="forget_pad">Forget paired pad</string>
+    <string name="offer_crash">Offer to send crash reports</string>
+    <string name="version_label">Version %s</string>
+
+    <string name="rawlog_title">Raw frame log</string>
+    <string name="rawlog_record">Record raw frames</string>
+    <string name="rawlog_export">Export</string>
+    <string name="rawlog_clear">Clear</string>
+    <string name="back">Back</string>
+    <string name="share_frame_log">Share frame log</string>
 </resources>
