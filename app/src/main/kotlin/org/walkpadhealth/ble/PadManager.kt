@@ -5,10 +5,13 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
 import android.content.Context
+import android.util.Log
 import no.nordicsemi.android.ble.BleManager
 import no.nordicsemi.android.ble.observer.ConnectionObserver
 import org.walkpadhealth.protocol.UrevoDriver
 import java.util.UUID
+
+private const val TAG = "WalkpadBle"
 
 private fun u16(x: String) = UUID.fromString("0000$x-0000-1000-8000-00805f9b34fb")
 private val FFF0 = u16("fff0"); private val FFF1 = u16("fff1"); private val FFF2 = u16("fff2")
@@ -55,15 +58,20 @@ class PadManager(
 
         override fun initialize() {
             // Nordic's request queue runs these in order, so the handshake below is sent only after fff1 is subscribed.
+            // The pad's running frame is 25 bytes; the default ATT payload is 20, so ask for a bigger MTU first (nRF Connect does).
+            requestMtu(247).fail { _, s -> Log.w(TAG, "MTU request failed: $s") }.enqueue()
             setNotificationCallback(fff1).with { _, d -> d.value?.let(onFff1) }
-            enableNotifications(fff1).enqueue()
+            enableNotifications(fff1).fail { _, s -> Log.w(TAG, "fff1 notifications failed: $s") }.enqueue()
             ftms?.let { c ->
                 setNotificationCallback(c).with { _, d -> d.value?.let(onFtms) }
-                if (c.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) enableNotifications(c).enqueue()
-                else if (c.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) enableIndications(c).enqueue()
+                if (c.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0)
+                    enableNotifications(c).fail { _, s -> Log.w(TAG, "2acd notifications failed: $s") }.enqueue()
+                else if (c.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0)
+                    enableIndications(c).fail { _, s -> Log.w(TAG, "2acd indications failed: $s") }.enqueue()
             }
-            UrevoDriver.handshakeFrames.forEach {
-                writeCharacteristic(fff2, it, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).enqueue()
+            UrevoDriver.handshakeFrames.forEach { frame ->
+                writeCharacteristic(fff2, frame, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                    .fail { _, s -> Log.w(TAG, "handshake write failed: $s") }.enqueue()
             }
         }
 

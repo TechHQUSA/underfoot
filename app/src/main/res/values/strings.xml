@@ -44,6 +44,7 @@
 
     <string name="rawlog_title">Raw frame log</string>
     <string name="rawlog_record">Record raw frames</string>
+    <string name="rawlog_counters">fff1 frames: %1$d (last %2$d bytes), 2acd frames: %3$d, belt status: %4$s</string>
     <string name="rawlog_export">Export</string>
     <string name="rawlog_clear">Clear</string>
     <string name="back">Back</string>

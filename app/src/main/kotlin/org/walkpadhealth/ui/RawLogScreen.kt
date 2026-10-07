@@ -21,7 +21,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.walkpadhealth.AppPrefs
+import org.walkpadhealth.LiveState
 import org.walkpadhealth.R
 import org.walkpadhealth.ble.FrameLog
 import java.io.File
@@ -34,6 +36,8 @@ fun RawLogScreen(prefs: AppPrefs, onBack: () -> Unit) {
     val chooser = stringResource(R.string.share_frame_log)
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.rawlog_title), style = MaterialTheme.typography.titleMedium)
+        val live by LiveState.flow.collectAsStateWithLifecycle()
+        Text(stringResource(R.string.rawlog_counters, live.fff1Frames, live.lastFff1Len, live.ftmsFrames, live.status.name))
         Row { Text(stringResource(R.string.rawlog_record), Modifier.weight(1f)); Switch(on, { on = it; prefs.rawLog = it }) }
         Button(onClick = {
             val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.files", log.file())

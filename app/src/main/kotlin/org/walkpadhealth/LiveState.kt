@@ -15,6 +15,10 @@ data class Live(
     val distanceM: Double = 0.0,
     val steps: Int = 0,
     val kcal: Double = 0.0,
+    /** Frames received since the service started; shown on the hidden raw-log screen to tell "silent pad" from "bad decode". */
+    val fff1Frames: Int = 0,
+    val ftmsFrames: Int = 0,
+    val lastFff1Len: Int = 0,
 )
 
 object LiveState { val flow = MutableStateFlow(Live()) }

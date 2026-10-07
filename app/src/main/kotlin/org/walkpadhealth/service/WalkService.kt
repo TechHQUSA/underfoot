@@ -143,6 +143,7 @@ class WalkService : Service() {
 
     private fun handleFff1(bytes: ByteArray) {
         if (destroyed) return
+        last = last.copy(fff1Frames = last.fff1Frames + 1, lastFff1Len = bytes.size)
         if (prefs.rawLog) log.append("fff1", bytes)
         val t = merger.merge(UrevoDriver.decodeFff1(bytes) ?: return)
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
@@ -152,6 +153,7 @@ class WalkService : Service() {
 
     private fun handleFtms(bytes: ByteArray) {
         if (destroyed) return
+        last = last.copy(ftmsFrames = last.ftmsFrames + 1)
         if (prefs.rawLog) log.append("2acd", bytes)
         UrevoDriver.decodeFtms(bytes)?.let(merger::onFtms)
     }
