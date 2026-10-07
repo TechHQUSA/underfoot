@@ -2,7 +2,10 @@ package org.walkpadhealth.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.runtime.rememberUpdatedState
 import kotlin.math.hypot
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -176,6 +179,13 @@ fun TodayScreen(
         Canvas(
             Modifier.fillMaxSize()
                 .pointerInput(adjustable) {
+                    // Any touch on the dial freezes page scrolling until the finger lifts, so a slightly-off drag cannot move the page.
+                    if (adjustable) awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false); onDragging(true)
+                        waitForUpOrCancellation(); onDragging(false)
+                    }
+                }
+                .pointerInput(adjustable) {
                     if (adjustable) {
                         var grabbed = false
                         detectDragGestures(
@@ -183,7 +193,7 @@ fun TodayScreen(
                                 val a = Math.toRadians((DialMath.START_DEG + DialMath.SWEEP_DEG * fractionNow).toDouble())
                                 val r = size.width / 2 - 16.dp.toPx()
                                 val hx = size.width / 2 + cos(a) * r; val hy = size.height / 2 + sin(a) * r
-                                grabbed = hypot(o.x - hx, o.y - hy) <= 56.dp.toPx()
+                                grabbed = hypot(o.x - hx, o.y - hy) <= 72.dp.toPx()
                                 if (grabbed) { onDragging(true); drag = pick(o.x, o.y, size.width, size.height) }
                             },
                             onDrag = { c, _ -> if (grabbed) { c.consume(); pick(c.position.x, c.position.y, size.width, size.height)?.let { drag = it } } },
