@@ -1,6 +1,7 @@
 package org.walkpadhealth.protocol
 
-enum class BeltStatus { IDLE, STOPPED, RUNNING, PAUSING, PAUSED, UNKNOWN }
+/** STARTING is the 3-2-1 countdown before the belt moves (status byte 0x02, seen on URTM059). */
+enum class BeltStatus { IDLE, STARTING, STOPPED, RUNNING, PAUSING, PAUSED, UNKNOWN }
 
 data class Telemetry(
     val status: BeltStatus,

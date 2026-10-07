@@ -18,6 +18,7 @@ object UrevoDriver {
         val status = when (frame[2].toInt() and 0xFF) {
             0x00 -> BeltStatus.IDLE
             0x01 -> BeltStatus.STOPPED
+            0x02 -> BeltStatus.STARTING
             0x03 -> BeltStatus.RUNNING
             0x04 -> BeltStatus.PAUSING
             0x0a -> BeltStatus.PAUSED

@@ -47,6 +47,24 @@ class UrevoDriverTest {
         for ((raw, status) in expected) assertEquals(status, UrevoDriver.decodeFff1(frame(raw, 0, 19))!!.status)
     }
 
+    private fun b(vararg v: Int) = ByteArray(v.size) { v[it].toByte() }
+
+    // Real frames from URTM059 (captures/urtm059-nrf-2026-10-07.md)
+    @Test fun realUrtm059IdlePingDecodes() {
+        val t = UrevoDriver.decodeFff1(b(0x02, 0x51, 0x00, 0x01, 0x08, 0x03))!!
+        assertEquals(BeltStatus.IDLE, t.status)
+        assertNull(t.speedKmh)
+    }
+
+    @Test fun realUrtm059CountdownFramesAreStartingNotUnknown() {
+        for (f in listOf(b(0x02, 0x51, 0x02, 0x03, 0x0C, 0x03), b(0x02, 0x51, 0x02, 0x02, 0x0F, 0x03), b(0x02, 0x51, 0x02, 0x01, 0x0E, 0x03)))
+            assertEquals(BeltStatus.STARTING, UrevoDriver.decodeFff1(f)!!.status)
+    }
+
+    @Test fun handshakeAckIsNotTelemetry() {
+        assertNull(UrevoDriver.decodeFff1(b(0x02, 0x50, 0x03, 0x00, 0x00, 0x59, 0xF6, 0x03)))
+    }
+
     @Test fun implausibleSpeedIsDroppedNotReported() {
         // a wrong frame layout or noise must not become 60 km/h and poison distance (Health Connect rejects huge values)
         assertNull(UrevoDriver.decodeFff1(frame(0x03, 600, 19))!!.speedKmh)
