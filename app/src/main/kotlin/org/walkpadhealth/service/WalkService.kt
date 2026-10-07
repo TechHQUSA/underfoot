@@ -103,6 +103,7 @@ class WalkService : Service() {
     private var lastSpeedMs = Long.MIN_VALUE / 2
     private var speedPending = false
     private var speedSeq = 0
+    private var managerGen = 0
     private var profileJob: kotlinx.coroutines.Job? = null
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
@@ -183,9 +184,14 @@ class WalkService : Service() {
         return START_STICKY
     }
 
-    private fun newManager() = PadManager(this,
-        { b -> main.post { handleFff1(b) } }, { b -> main.post { handleFtms(b) } }, { c -> main.post { handleConnection(c) } },
-        { b -> main.post { handleControlReply(b) } })
+    /** Each manager's callbacks carry its generation, so a late callback from a replaced manager cannot touch the live connection. */
+    private fun newManager(): PadManager {
+        val gen = ++managerGen
+        fun current(f: () -> Unit) = main.post { if (gen == managerGen) f() }
+        return PadManager(this,
+            { b -> current { handleFff1(b) } }, { b -> current { handleFtms(b) } }, { c -> current { handleConnection(c) } },
+            { b -> current { handleControlReply(b) } })
+    }
 
     /**
      * The Bluetooth stack can drop the GATT object without telling us (Bluetooth restarted, link lost silently); the next write then
@@ -356,7 +362,9 @@ class WalkService : Service() {
         runCatching { unregisterReceiver(btState) }
         main.removeCallbacksAndMessages(null)
         stopScan()
-        tracker.finish(SystemClock.elapsedRealtime())?.let(::persist)
+        // The final walk is written before the service goes away: a process kill right after onDestroy would otherwise lose it.
+        tracker.finish(SystemClock.elapsedRealtime())?.let(store::enqueue)
+        runCatching { kotlinx.coroutines.runBlocking { store.flush() } }
         manager?.close()                           // disconnects and releases the GATT client; late callbacks are ignored via `destroyed`
         manager = null
         super.onDestroy()

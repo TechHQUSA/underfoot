@@ -25,6 +25,17 @@ class SessionTrackerTest {
         assertFalse(t.isActive)
     }
 
+    @Test fun aShortDisconnectIsNotCountedAsWalking() {
+        val t = SessionTracker()
+        t.runFor(0, 20)
+        t.onDisconnect(20_000)
+        t.onTelemetry(run(), 24_000)                 // back after 4 s: those 4 s were not observed
+        t.runFor(25, 30)
+        val out = t.onTelemetry(st(BeltStatus.STOPPED), 31_000)!!
+        assertEquals(26L, out.activeSec)             // 20 s before, 6 s after the return (24 -> 30); the 4 s gap is not counted
+        assertEquals(26 * 3.0 / 3.6, out.integratedDistanceM, 1e-6)
+    }
+
     @Test fun idleFramesWithoutASessionDoNothing() {
         val t = SessionTracker()
         assertNull(t.onTelemetry(st(BeltStatus.IDLE), 0))
