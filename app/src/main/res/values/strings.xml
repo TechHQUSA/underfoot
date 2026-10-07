@@ -1,0 +1,6 @@
+<resources>
+    <string name="app_name">Walkpad Health</string>
+    <string name="notif_channel">Walking pad</string>
+    <string name="notif_text">Waiting for your walking pad</string>
+    <string name="storage_full">Storage is full. The last walk is not saved yet; free up space soon.</string>
+</resources>
