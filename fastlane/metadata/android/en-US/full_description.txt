@@ -1,0 +1,11 @@
+Walkpad Health records your walks on a UREVO walking pad and saves them to Health Connect. There is no account and no login.
+
+When the pad is on, the app connects over Bluetooth, records the session while the belt runs, and writes steps, distance, time and calories to Health Connect when you stop.
+
+Privacy: the app has no network permission and no analytics. Crash details are shared only if you tap Send after a crash, through the system share sheet.
+
+Supported pad: UREVO URTM059. Other pads in the same family may work but are untested.
+
+Steps and calories are estimated from your weight and height (entered once in Settings, stored on the device) when the pad does not report them. Each walk shows which values were reported by the pad and which were estimated.
+
+Requires Health Connect (built in on Android 14 and later, a separate app on older versions).

@@ -1,0 +1,24 @@
+# Draft F-Droid build recipe. The owner submits this to https://gitlab.com/fdroid/fdroiddata as metadata/org.walkpadhealth.yml.
+# Replace REPLACE_WITH_REPO_URL with the public repository URL before submitting.
+Categories:
+  - Sports & Health
+License: GPL-3.0-or-later
+SourceCode: REPLACE_WITH_REPO_URL
+IssueTracker: REPLACE_WITH_REPO_URL/issues
+
+AutoName: Walkpad Health
+RepoType: git
+Repo: REPLACE_WITH_REPO_URL.git
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    subdir: app
+    gradle:
+      - yes
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1
