@@ -8,7 +8,7 @@ Status: implemented for version 0.1; living document. The original design was ap
 A free, open-source Android app for a UREVO walking pad (BLE name `URTM059`, "2D Pro") with no account and no login. It records walks, writes them to Health Connect, and shows steps, time, distance and calories. It can also start, pause, resume and stop the belt. Distribution: GitHub releases and F-Droid.
 
 ### Success criteria
-- A walk on the pad is recorded and appears in History and in Health Connect without the user opening the app (status: History confirmed on hardware; Health Connect pending the owner's check).
+- A walk on the pad is recorded and appears in History and in Health Connect without the user opening the app (status: History and the Health Connect exercise sessions confirmed on hardware, seen in a third-party Health Connect viewer; the steps, distance and calories records on those sessions still to be checked).
 - No analytics, no account, no network use by the app. Crash reports are opt-in and sent only after the user taps Send.
 - Every dependency is F-Droid-compatible (no Google Play Services, no proprietary SDKs).
 - Protocol logic is unit-tested without hardware, using frames captured from the real pad.
@@ -101,7 +101,7 @@ Plain messages with a recovery action: Bluetooth off, permission denied, scan fa
 - Docs: `README.md`, `PROTOCOL.md`, `CONTRIBUTING.md`.
 
 ## 12. Open items
-- Confirm the walk reaches Health Connect on hardware and that History numbers match the console.
+- Check that the steps, distance and calories records on a walk in Health Connect match History, and that History numbers match the console.
 - Measure the control-point indications and the `fff1` status after stop.
 - Release setup: keystore, secrets, public repo URL, tag.
 - App name and application id are still the working names (Walkpad Health, `org.walkpadhealth`).
