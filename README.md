@@ -1,4 +1,4 @@
-# Walkpad Health
+# Underfoot
 
 Open-source Android app for UREVO walking pads. It records your walks over Bluetooth LE, saves them to Health Connect, and lets you start, pause, resume and stop the belt. No account, no analytics.
 
@@ -24,7 +24,7 @@ Steps and some calories are estimates. The pad reports time, distance, speed and
 4. Turn the pad on. The app finds it, connects, and shows "Connected locally".
 5. Exempt the app from battery optimization so recording survives screen-off. If the OS kills the app, it resumes at the next boot or the next time you open it.
 
-The pad talks to one app at a time. Close other apps that use it (including the official one) while Walkpad Health is running.
+The pad talks to one app at a time. Close other apps that use it (including the official one) while Underfoot is running.
 
 ## Privacy
 No network permission, no analytics, no ads. Your data stays on the phone, excluded from cloud backup and device transfer. After a crash the app offers to share the error type, code locations and app version through the system share sheet; nothing is sent unless you tap Send.

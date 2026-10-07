@@ -1,4 +1,4 @@
-Walkpad Health 0.1.0, SDK 37
+Underfoot 0.1.0, SDK 37
 
 java.lang.RuntimeException
   at android.app.ActivityThread.handleServiceArgs:5870
@@ -19,9 +19,9 @@ java.lang.RuntimeException
   at no.nordicsemi.android.ble.BleManagerHandler.enqueue:1651
   at no.nordicsemi.android.ble.Request.enqueue:1209
   at no.nordicsemi.android.ble.TimeoutableRequest.enqueue:106
-  at org.walkpadhealth.ble.PadManager.send:100
-  at org.walkpadhealth.service.WalkService.runCommand:174
-  at org.walkpadhealth.service.WalkService.onStartCommand:159
+  at org.underfoot.ble.PadManager.send:100
+  at org.underfoot.service.WalkService.runCommand:174
+  at org.underfoot.service.WalkService.onStartCommand:159
   at android.app.ActivityThread.handleServiceArgs:5854
   at android.app.ActivityThread.-$$Nest$mhandleServiceArgs:0
   at android.app.ActivityThread$H.handleMessage:2866
@@ -43,9 +43,9 @@ android.os.DeadObjectException
   at no.nordicsemi.android.ble.BleManagerHandler.enqueue:1651
   at no.nordicsemi.android.ble.Request.enqueue:1209
   at no.nordicsemi.android.ble.TimeoutableRequest.enqueue:106
-  at org.walkpadhealth.ble.PadManager.send:100
-  at org.walkpadhealth.service.WalkService.runCommand:174
-  at org.walkpadhealth.service.WalkService.onStartCommand:159
+  at org.underfoot.ble.PadManager.send:100
+  at org.underfoot.service.WalkService.runCommand:174
+  at org.underfoot.service.WalkService.onStartCommand:159
   at android.app.ActivityThread.handleServiceArgs:5854
   at android.app.ActivityThread.-$$Nest$mhandleServiceArgs:0
   at android.app.ActivityThread$H.handleMessage:2866

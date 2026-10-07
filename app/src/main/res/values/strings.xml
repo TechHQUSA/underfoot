@@ -1,11 +1,11 @@
 <resources>
-    <string name="app_name">Walkpad Health</string>
+    <string name="app_name">Underfoot</string>
     <string name="notif_channel">Walking pad</string>
     <string name="notif_text">Waiting for your walking pad</string>
     <string name="storage_full">Storage is full. The last walk is not saved yet; free up space soon.</string>
 
     <string name="problem_bt_off">Bluetooth is off. Turn it on to record walks.</string>
-    <string name="problem_permission">Walkpad Health needs Bluetooth permission to find your pad. Open Settings to allow it.</string>
+    <string name="problem_permission">Underfoot needs Bluetooth permission to find your pad. Open Settings to allow it.</string>
     <string name="problem_scan">Could not scan for your pad. Turn automatic recording off and on to retry.</string>
     <string name="looking_for_pad">Looking for your pad...</string>
     <string name="walking">Walking</string>
@@ -68,7 +68,7 @@
     <string name="back">Back</string>
     <string name="share_frame_log">Share frame log</string>
 
-    <string name="crash_title">Walkpad Health crashed</string>
+    <string name="crash_title">Underfoot crashed</string>
     <string name="crash_text">Send the crash details? They contain only the error type, code locations and app version, never messages or your data. Nothing is sent unless you tap Send.</string>
     <string name="crash_send">Send</string>
     <string name="crash_discard">Discard</string>

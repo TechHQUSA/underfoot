@@ -1,0 +1,115 @@
+package org.underfoot.ui
+
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import java.util.Locale
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.health.connect.client.PermissionController
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import org.underfoot.health.HcState
+import org.underfoot.health.healthConnectState
+import org.underfoot.AppPrefs
+import org.underfoot.BuildConfig
+import org.underfoot.R
+import org.underfoot.data.ProfileEntity
+import org.underfoot.health.HEALTH_PERMISSIONS
+import org.underfoot.health.SyncScheduler
+import org.underfoot.service.WalkService
+
+private const val HC_PACKAGE = "com.google.android.apps.healthdata"
+
+private fun openHealthConnectPage(ctx: Context) {
+    val tries = listOf("market://details?id=$HC_PACKAGE", "https://play.google.com/store/apps/details?id=$HC_PACKAGE")
+    for (uri in tries) {
+        try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return }
+        catch (e: ActivityNotFoundException) { /* try the next one */ }
+    }
+}
+
+@Composable
+fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Double) -> Unit, onOpenRawLog: () -> Unit) {
+    val ctx = LocalContext.current
+    var imperial by remember { mutableStateOf(prefs.imperial) }
+    // The profile is stored in kg/cm; the fields show the chosen units and use '.' as the decimal mark so parsing matches.
+    var w by remember(profile, imperial) {
+        mutableStateOf(profile?.let { "%.1f".format(Locale.US, if (imperial) kgToLb(it.weightKg) else it.weightKg) } ?: "")
+    }
+    var h by remember(profile, imperial) {
+        mutableStateOf(profile?.let { "%.1f".format(Locale.US, if (imperial) cmToIn(it.heightCm) else it.heightCm) } ?: "")
+    }
+    var auto by remember { mutableStateOf(prefs.autoRecord) }
+    var crash by remember { mutableStateOf(prefs.crashOffer) }
+    var controls by remember { mutableStateOf(prefs.controlsEnabled) }
+    var taps by remember { mutableIntStateOf(0) }
+    var hcState by remember { mutableStateOf<HcState?>(null) }
+    var hcRefresh by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) { hcRefresh++; onPauseOrDispose {} }          // also re-check when returning from the permission screen
+    LaunchedEffect(hcRefresh) { hcState = healthConnectState(ctx) }
+    val hc = rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) {
+        SyncScheduler.enqueue(ctx); hcRefresh++
+    }
+    val num = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+
+    Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.settings_profile_title), style = MaterialTheme.typography.titleMedium)
+        Row { Text(stringResource(R.string.use_imperial), Modifier.weight(1f)); Switch(imperial, { imperial = it; prefs.imperial = it }) }
+        OutlinedTextField(w, { w = it }, label = { Text(stringResource(if (imperial) R.string.label_weight_lb else R.string.label_weight_kg)) }, keyboardOptions = num, singleLine = true)
+        OutlinedTextField(h, { h = it }, label = { Text(stringResource(if (imperial) R.string.label_height_in else R.string.label_height_cm)) }, keyboardOptions = num, singleLine = true)
+        Button(onClick = {
+            val wv = w.toDoubleOrNull() ?: 0.0
+            val hv = h.toDoubleOrNull() ?: 0.0
+            onSave(if (imperial) lbToKg(wv) else wv, if (imperial) inToCm(hv) else hv)
+        }) { Text(stringResource(R.string.save_profile)) }
+        HorizontalDivider()
+        // Without the Health Connect app (Android 9-13) the permission contract has nowhere to go and launch() would throw.
+        when (hcState) {
+            null -> FilledTonalButton(onClick = {}, enabled = false) { Text(stringResource(R.string.hc_checking)) }
+            HcState.CONNECTED -> FilledTonalButton(onClick = {}, enabled = false) {
+                Icon(Icons.Filled.Check, contentDescription = null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.hc_connected))
+            }
+            HcState.NEEDS_PERMISSION -> Button(onClick = { hc.launch(HEALTH_PERMISSIONS) }) { Text(stringResource(R.string.allow_hc)) }
+            HcState.UNAVAILABLE -> Button(onClick = { openHealthConnectPage(ctx) }) { Text(stringResource(R.string.install_hc)) }
+        }
+        HorizontalDivider()
+        Row { Text(stringResource(R.string.record_auto), Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }) }
+        OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }) { Text(stringResource(R.string.forget_pad)) }
+        Row { Text(stringResource(R.string.settings_controls), Modifier.weight(1f)); Switch(controls, { controls = it; prefs.controlsEnabled = it }) }
+        Row { Text(stringResource(R.string.offer_crash), Modifier.weight(1f)); Switch(crash, { crash = it; prefs.crashOffer = it }) }
+        Text(stringResource(R.string.version_label, BuildConfig.VERSION_NAME), Modifier.clickable { if (++taps >= 7) { taps = 0; onOpenRawLog() } })
+    }
+}

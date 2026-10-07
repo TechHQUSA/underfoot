@@ -5,10 +5,10 @@ plugins {
     alias(libs.plugins.ksp)
 }
 android {
-    namespace = "org.walkpadhealth"
+    namespace = "org.underfoot"
     compileSdk = 36
     defaultConfig {
-        applicationId = "org.walkpadhealth"
+        applicationId = "org.underfoot"
         minSdk = 28
         targetSdk = 35
         versionCode = 1

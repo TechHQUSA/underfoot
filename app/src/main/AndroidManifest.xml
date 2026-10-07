@@ -19,7 +19,9 @@
     <queries><package android:name="com.google.android.apps.healthdata" /></queries>
 
     <application
-        android:name=".WalkpadApp"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:name=".UnderfootApp"
         android:label="@string/app_name"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
