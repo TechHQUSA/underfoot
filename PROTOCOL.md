@@ -41,8 +41,17 @@ and height (marked as estimated).
 `2ADA` sends events such as "started or resumed", "stopped or paused by the user" and "target speed changed". `2AD3` sends
 Pre-Workout (`01 0E`), Manual Mode (`01 0D`) and Other (`01 00`).
 
+## Control point (measured with nobody on the belt, nRF Connect, 2026-10-07)
+Standard FTMS Control Point `2AD9` (write; replies come as indications `80 <opcode> <result>`; in nRF the write dialog only opened
+with indications turned off). All three worked after `00` (request control):
+- `08 02` pause: the belt slows and holds in paused state (`fff1` status `04` then `0A`).
+- `07` resume: the belt starts moving again.
+- `08 01` stop: the belt slows down and the console shows END, which is the pad's own end-of-workout, unlike the console's Stop
+  button, which only pauses.
+Not yet measured: the exact indications the pad sends back, and the `fff1` status after stop.
+
 ## Safety
-Version 0.1 never sends control frames. The only writes are the two handshake frames above.
+Until control is built, the app never sends control commands; the only writes are the two handshake frames above.
 
 ## Still unknown
 - Whether the pad ever leaves `0A` by itself (it stayed there for over a minute), and what `01` (stopped) means.
