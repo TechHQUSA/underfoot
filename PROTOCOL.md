@@ -19,7 +19,7 @@ flowed once the handshake had been done earlier on the same connection; whether 
 
 ## fff1 frames, header `02 51 <status> ...`, last byte `03` (measured)
 Status byte: `00` idle, `02` start countdown (data byte counts 3, 2, 1), `03` running, `04` pausing (belt slowing), `0A` paused.
-`01` (stopped) is assumed from the 5L notes and has not been seen.
+`01` (stopped) is assumed from the 5L notes and has not been seen. Pressing Stop on the console leaves the pad in `0A` (paused) with the belt stopped and elapsed time frozen (measured twice); the app therefore ends a walk after 60 s of pause.
 - 6 bytes while idle or counting down: `02 51 00 01 08 03`.
 - 25 bytes while running, pausing and paused: `02 51 <st> <speed u16> <elapsed u16> <dist u16> <kcal u16> <?? u16> 00 00 00 00 39 00 <mac4> <chk> 03`.
   - bytes 5-6: elapsed seconds (matches the console and `2ACD`).
@@ -45,7 +45,7 @@ Pre-Workout (`01 0E`), Manual Mode (`01 0D`) and Other (`01 00`).
 Version 0.1 never sends control frames. The only writes are the two handshake frames above.
 
 ## Still unknown
-- Whether `01` (stopped) or `00` (idle) follows a console Stop, and how a normal end of walk looks on `fff1`.
+- Whether the pad ever leaves `0A` by itself (it stayed there for over a minute), and what `01` (stopped) means.
 - Whether the pad keeps the handshake across a disconnect.
 - The meaning of `fff1` bytes 11-12 and the checksum.
 - Whether a pad set to km (console unit) changes the units of `fff1` speed and distance.

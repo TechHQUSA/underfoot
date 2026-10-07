@@ -7,6 +7,8 @@ class SessionTracker(
     private val gapMs: Long = 5_000,
     private val disconnectMs: Long = 60_000,
     private val minActiveSec: Long = 10,
+    /** URTM059 stays PAUSED after the console Stop button, so a pause this long ends the walk (dated to when the pause began). */
+    private val pauseEndMs: Long = 60_000,
     private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     private data class Totals(val dist: Double? = null, val steps: Int? = null, val kcal: Double? = null)
@@ -21,6 +23,7 @@ class SessionTracker(
     private var base = Totals()
     private var latest = Totals()
     private var disconnectedAt: Long? = null
+    private var pausedSince: Long? = null
 
     val isActive: Boolean get() = startMs != null
 
@@ -37,6 +40,11 @@ class SessionTracker(
                 lastSpeedKmh?.let { integratedM += it / 3.6 * dt / 1000.0 }   // previous speed held over the interval
             }
             latest = Totals(t.distanceM ?: latest.dist, t.steps ?: latest.steps, t.kcal ?: latest.kcal)
+            when (t.status) {
+                BeltStatus.PAUSING, BeltStatus.PAUSED -> if (pausedSince == null) pausedSince = nowMs
+                BeltStatus.RUNNING, BeltStatus.STARTING -> pausedSince = null
+                else -> {}
+            }
         }
         lastMs = nowMs
         lastStatus = t.status
@@ -54,8 +62,11 @@ class SessionTracker(
     }
 
     fun tick(nowMs: Long): SessionSummary? {
-        val d = disconnectedAt ?: return null
-        return if (nowMs - d >= disconnectMs) end(d) else null
+        val d = disconnectedAt
+        if (d != null && nowMs - d >= disconnectMs) return end(d)
+        val p = pausedSince
+        if (p != null && nowMs - p >= pauseEndMs) return end(p)
+        return null
     }
 
     fun finish(nowMs: Long): SessionSummary? = if (startMs != null) end(nowMs) else null
@@ -80,7 +91,7 @@ class SessionTracker(
             delta(base.kcal, latest.kcal),
             wallStartMs,
         )
-        startMs = null; disconnectedAt = null; activeMs = 0; integratedM = 0.0
+        startMs = null; disconnectedAt = null; pausedSince = null; activeMs = 0; integratedM = 0.0
         base = Totals(); latest = Totals()
         return if (summary.activeSec >= minActiveSec) summary else null
     }

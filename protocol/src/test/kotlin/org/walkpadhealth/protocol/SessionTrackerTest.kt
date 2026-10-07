@@ -50,6 +50,43 @@ class SessionTrackerTest {
         assertEquals(19 * 3.0 / 3.6, out.integratedDistanceM, 1e-6)
     }
 
+    @Test fun pauseOfAMinuteEndsTheWalkWhereThePauseBegan() {
+        // This pad stays PAUSED after the console Stop button (seen on URTM059), so a long pause has to end the walk.
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        for (s in 31..90) assertNull(t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), s * 1000L))
+        val out = t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), 91_000)!!
+        assertEquals(31_000L, out.endMs); assertEquals(30L, out.activeSec)
+        assertFalse(t.isActive)
+        assertNull(t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), 92_000))     // later paused frames start nothing
+    }
+
+    @Test fun theTickerEndsAPausedWalkEvenIfNoFramesArrive() {
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        t.onTelemetry(Telemetry(BeltStatus.PAUSING, null), 31_000)
+        assertNull(t.tick(90_999))
+        assertEquals(31_000L, t.tick(91_000)!!.endMs)
+    }
+
+    @Test fun aShortPauseKeepsTheSameWalk() {
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        for (s in 31..60) t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), s * 1000L)
+        t.runFor(61, 80)
+        assertNull(t.tick(200_000))                                                // pause timer was cleared by RUNNING
+        val out = t.onTelemetry(st(BeltStatus.STOPPED), 81_000)!!
+        assertEquals(30L + 19L, out.activeSec)
+    }
+
+    @Test fun theCountdownAfterAPauseAlsoClearsThePauseTimer() {
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), 31_000)
+        t.onTelemetry(Telemetry(BeltStatus.STARTING, null), 80_000)
+        assertNull(t.tick(200_000)); assertTrue(t.isActive)
+    }
+
     @Test fun gapOverFiveSecondsIsNotIntegrated() {
         val t = SessionTracker()
         t.onTelemetry(run(), 0); t.onTelemetry(run(), 1_000)
