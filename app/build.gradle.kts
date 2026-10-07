@@ -56,6 +56,7 @@ dependencies {
     implementation(libs.work)
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
+    androidTestImplementation(kotlin("test"))
     androidTestImplementation(libs.room.testing)
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
