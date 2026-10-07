@@ -21,6 +21,6 @@ class SyncWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
 object SyncScheduler {
     fun enqueue(ctx: Context) {
         val req = OneTimeWorkRequestBuilder<SyncWorker>().setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 1, TimeUnit.MINUTES).build()
-        WorkManager.getInstance(ctx).enqueueUniqueWork("sync", ExistingWorkPolicy.KEEP, req)
+        WorkManager.getInstance(ctx).enqueueUniqueWork("sync", ExistingWorkPolicy.APPEND_OR_REPLACE, req)   // a session saved while a run is in flight still gets its own run
     }
 }

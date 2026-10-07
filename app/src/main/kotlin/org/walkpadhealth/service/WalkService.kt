@@ -83,6 +83,7 @@ class WalkService : Service() {
     private var connecting = false
     private var pendingAddress: String? = null     // saved as the paired pad only after the GATT services validate
     private var scanRetries = 0
+    private var destroyed = false                  // stale posts from the old BLE manager must not revive a stopped service
     private var tickCount = 0
     private var last = Live()
     private val unsaved = ConcurrentLinkedQueue<FinalSession>()
@@ -90,6 +91,7 @@ class WalkService : Service() {
 
     private val ticker = object : Runnable {
         override fun run() {
+            if (destroyed) return
             tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
             if (++tickCount % 30 == 0 && unsaved.isNotEmpty()) flushUnsaved()
             publish(); main.postDelayed(this, 1000)
@@ -102,21 +104,22 @@ class WalkService : Service() {
     }
 
     private fun handleScanResult(result: ScanResult) {
-        if (connecting) return
+        if (destroyed || connecting) return
         val name = result.scanRecord?.deviceName ?: result.device.name
         if (name?.startsWith("URTM") == true) { stopScan(); connect(result.device) }
     }
 
     /** Bounded retry: five attempts 10 s apart, then a visible SCAN_FAILED state until auto-record is toggled. */
     private fun handleScanFailed() {
+        if (destroyed) return
         if (++scanRetries > 5) { last = last.copy(problem = Problem.SCAN_FAILED); publish(); return }
         main.postDelayed({ findPad() }, 10_000)
     }
 
-    private fun connect(device: BluetoothDevice) {
+    private fun connect(device: BluetoothDevice, auto: Boolean = false) {
         if (connecting) return
         connecting = true; pendingAddress = device.address
-        manager?.connectTo(device)
+        manager?.connectTo(device, auto)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -137,6 +140,7 @@ class WalkService : Service() {
     }
 
     private fun handleFff1(bytes: ByteArray) {
+        if (destroyed) return
         if (prefs.rawLog) log.append("fff1", bytes)
         val t = UrevoDriver.decodeFff1(bytes) ?: return
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
@@ -144,9 +148,10 @@ class WalkService : Service() {
         publish()
     }
 
-    private fun handleFtms(bytes: ByteArray) { if (prefs.rawLog) log.append("2acd", bytes) }
+    private fun handleFtms(bytes: ByteArray) { if (!destroyed && prefs.rawLog) log.append("2acd", bytes) }
 
     private fun handleConnection(connected: Boolean) {
+        if (destroyed) return
         connecting = false
         if (connected) { scanRetries = 0; pendingAddress?.let { prefs.padAddress = it } }   // onDeviceReady: services validated
         last = last.copy(connected = connected)
@@ -160,13 +165,14 @@ class WalkService : Service() {
 
     /** Connect straight to the stored address, otherwise scan. Retries every 5 s while Bluetooth is off. */
     private fun findPad() {
+        if (destroyed) return
         val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
         if (adapter == null || !adapter.isEnabled) {
             last = last.copy(problem = Problem.BLUETOOTH_OFF); publish(); main.postDelayed({ findPad() }, 5_000); return
         }
         last = last.copy(problem = Problem.NONE)
         val addr = prefs.padAddress
-        if (addr != null && BluetoothAdapter.checkBluetoothAddress(addr)) connect(adapter.getRemoteDevice(addr)) else startScan(adapter)
+        if (addr != null && BluetoothAdapter.checkBluetoothAddress(addr)) connect(adapter.getRemoteDevice(addr), auto = true) else startScan(adapter)
     }
 
     private fun startScan(adapter: BluetoothAdapter) {
@@ -233,10 +239,12 @@ class WalkService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         main.removeCallbacksAndMessages(null)
         stopScan()
         tracker.finish(SystemClock.elapsedRealtime())?.let(::persist)
-        manager?.disconnect()?.enqueue()
+        manager?.close()                           // disconnects and releases the GATT client; late callbacks are ignored via `destroyed`
+        manager = null
         super.onDestroy()
     }
 }

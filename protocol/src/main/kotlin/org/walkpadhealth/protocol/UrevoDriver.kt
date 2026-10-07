@@ -9,6 +9,8 @@ object UrevoDriver {
 
     private const val MIN_FRAME = 6
     private const val SPEED_FRAME = 19
+    /** Walking pads top out near 6 km/h; anything above this is a wrong layout or noise, not a speed. */
+    private const val MAX_SPEED_KMH = 30.0
 
     /** Returns null for anything that is not a well-formed `02 51 ...` frame. Never throws. */
     fun decodeFff1(frame: ByteArray): Telemetry? {
@@ -22,7 +24,7 @@ object UrevoDriver {
             else -> BeltStatus.UNKNOWN
         }
         val speed = if (frame.size >= SPEED_FRAME) {
-            ((frame[3].toInt() and 0xFF) or ((frame[4].toInt() and 0xFF) shl 8)) / 10.0
+            (((frame[3].toInt() and 0xFF) or ((frame[4].toInt() and 0xFF) shl 8)) / 10.0).takeIf { it <= MAX_SPEED_KMH }
         } else null
         return Telemetry(status, speed)
     }

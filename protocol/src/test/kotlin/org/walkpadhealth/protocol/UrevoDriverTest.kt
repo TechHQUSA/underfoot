@@ -47,6 +47,12 @@ class UrevoDriverTest {
         for ((raw, status) in expected) assertEquals(status, UrevoDriver.decodeFff1(frame(raw, 0, 19))!!.status)
     }
 
+    @Test fun implausibleSpeedIsDroppedNotReported() {
+        // a wrong frame layout or noise must not become 60 km/h and poison distance (Health Connect rejects huge values)
+        assertNull(UrevoDriver.decodeFff1(frame(0x03, 600, 19))!!.speedKmh)
+        assertEquals(30.0, UrevoDriver.decodeFff1(frame(0x03, 300, 19))!!.speedKmh!!, 1e-9)
+    }
+
     @Test fun eighteenByteFrameHasNoSpeed() {
         assertNull(UrevoDriver.decodeFff1(frame(0x03, 20, 18))!!.speedKmh)
     }

@@ -17,6 +17,7 @@ class SyncSessions(private val dao: SessionDao, private val gw: HealthGateway) {
         for (s in dao.unsynced()) {
             try { gw.write(s); dao.markSynced(s.id) }
             catch (e: CancellationException) { throw e }
+            catch (e: IllegalArgumentException) { continue }   // permanently invalid for Health Connect: skip it, do not block later walks
             catch (e: Exception) { return SyncResult.Retry }
         }
         return SyncResult.Done

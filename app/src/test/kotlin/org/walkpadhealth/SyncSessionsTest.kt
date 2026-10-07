@@ -19,10 +19,14 @@ class SyncSessionsTest {
         override suspend fun unsynced() = rows.filter { it.id !in synced }
         override suspend fun markSynced(id: Long) { synced += id }
     }
-    private class FakeGw(var perms: Boolean = true, var failOn: Long? = null) : HealthGateway {
+    private class FakeGw(var perms: Boolean = true, var failOn: Long? = null, var rejectId: Long? = null) : HealthGateway {
         val written = mutableListOf<Long>()
         override suspend fun hasPermissions() = perms
-        override suspend fun write(s: SessionEntity) { if (s.id == failOn) error("boom"); written += s.id }
+        override suspend fun write(s: SessionEntity) {
+            if (s.id == rejectId) throw IllegalArgumentException("value out of range")
+            if (s.id == failOn) error("boom")
+            written += s.id
+        }
     }
     private fun row(id: Long) = SessionEntity(id, id, id + 1, 60, 50.0, "ESTIMATED", 70, "ESTIMATED", 3.0, "ESTIMATED")
 
@@ -50,6 +54,12 @@ class SyncSessionsTest {
         gw.failOn = null
         assertEquals(SyncResult.Done, SyncSessions(dao, gw).run())
         assertEquals(listOf(1L, 2L), dao.synced); assertEquals(listOf(1L, 2L), gw.written)
+    }
+
+    @Test fun invalidSessionIsSkippedAndDoesNotBlockLaterOnes() = runTest {
+        val dao = FakeDao(mutableListOf(row(1), row(2), row(3))); val gw = FakeGw(rejectId = 2)
+        assertEquals(SyncResult.Done, SyncSessions(dao, gw).run())
+        assertEquals(listOf(1L, 3L), dao.synced)                   // 2 is permanently invalid: left unsynced, not retried forever
     }
 
     @Test fun nothingToSyncIsDone() = runTest {

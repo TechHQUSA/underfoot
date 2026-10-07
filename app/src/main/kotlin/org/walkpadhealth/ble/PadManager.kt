@@ -36,8 +36,13 @@ class PadManager(
         })
     }
 
-    fun connectTo(device: BluetoothDevice) {
-        connect(device).retry(3, 200).useAutoConnect(false).timeout(15_000).enqueue()
+    /**
+     * `auto = true` is the low-duty background connect for a known pad: it waits with no timeout until the pad appears,
+     * so a pad that is switched off costs almost no battery. `auto = false` is a direct connect for a freshly scanned pad.
+     */
+    fun connectTo(device: BluetoothDevice, auto: Boolean = false) {
+        val req = connect(device).retry(3, 200).useAutoConnect(auto)
+        (if (auto) req else req.timeout(15_000)).enqueue()
     }
 
     override fun getGattCallback(): BleManagerGattCallback = object : BleManagerGattCallback() {

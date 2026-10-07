@@ -1,5 +1,9 @@
 package org.walkpadhealth.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import org.walkpadhealth.AppPrefs
 import org.walkpadhealth.BuildConfig
@@ -35,6 +40,16 @@ import org.walkpadhealth.data.ProfileEntity
 import org.walkpadhealth.health.HEALTH_PERMISSIONS
 import org.walkpadhealth.health.SyncScheduler
 import org.walkpadhealth.service.WalkService
+
+private const val HC_PACKAGE = "com.google.android.apps.healthdata"
+
+private fun openHealthConnectPage(ctx: Context) {
+    val tries = listOf("market://details?id=$HC_PACKAGE", "https://play.google.com/store/apps/details?id=$HC_PACKAGE")
+    for (uri in tries) {
+        try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return }
+        catch (e: ActivityNotFoundException) { /* try the next one */ }
+    }
+}
 
 @Composable
 fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Double) -> Unit, onOpenRawLog: () -> Unit) {
@@ -53,7 +68,11 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         OutlinedTextField(h, { h = it }, label = { Text(stringResource(R.string.label_height)) }, keyboardOptions = num, singleLine = true)
         Button(onClick = { onSave(w.toDoubleOrNull() ?: 0.0, h.toDoubleOrNull() ?: 0.0) }) { Text(stringResource(R.string.save_profile)) }
         HorizontalDivider()
-        Button(onClick = { hc.launch(HEALTH_PERMISSIONS) }) { Text(stringResource(R.string.allow_hc)) }
+        // Without the Health Connect app (Android 9-13) the permission contract has nowhere to go and launch() would throw.
+        val hcReady = HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE
+        Button(onClick = { if (hcReady) hc.launch(HEALTH_PERMISSIONS) else openHealthConnectPage(ctx) }) {
+            Text(stringResource(if (hcReady) R.string.allow_hc else R.string.install_hc))
+        }
         HorizontalDivider()
         Row { Text(stringResource(R.string.record_auto), Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }) }
         OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }) { Text(stringResource(R.string.forget_pad)) }
