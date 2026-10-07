@@ -1,0 +1,59 @@
+Walkpad Health 0.1.0, SDK 37
+
+java.lang.RuntimeException
+  at android.app.ActivityThread.handleServiceArgs:5870
+  at android.app.ActivityThread.-$$Nest$mhandleServiceArgs:0
+  at android.app.ActivityThread$H.handleMessage:2866
+  at android.os.Handler.dispatchMessageImpl:142
+  at android.os.Handler.dispatchMessage:125
+  at android.os.Looper.loopOnce:296
+  at android.os.Looper.loop:397
+  at android.app.ActivityThread.main:9569
+  at java.lang.reflect.Method.invoke:-2
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run:575
+  at com.android.internal.os.ZygoteInit.main:975
+java.lang.RuntimeException
+  at android.bluetooth.BluetoothGatt.writeCharacteristic:1511
+  at no.nordicsemi.android.ble.BleManagerHandler.internalWriteCharacteristic:1212
+  at no.nordicsemi.android.ble.BleManagerHandler.nextRequest:3676
+  at no.nordicsemi.android.ble.BleManagerHandler.enqueue:1651
+  at no.nordicsemi.android.ble.Request.enqueue:1209
+  at no.nordicsemi.android.ble.TimeoutableRequest.enqueue:106
+  at org.walkpadhealth.ble.PadManager.send:100
+  at org.walkpadhealth.service.WalkService.runCommand:174
+  at org.walkpadhealth.service.WalkService.onStartCommand:159
+  at android.app.ActivityThread.handleServiceArgs:5854
+  at android.app.ActivityThread.-$$Nest$mhandleServiceArgs:0
+  at android.app.ActivityThread$H.handleMessage:2866
+  at android.os.Handler.dispatchMessageImpl:142
+  at android.os.Handler.dispatchMessage:125
+  at android.os.Looper.loopOnce:296
+  at android.os.Looper.loop:397
+  at android.app.ActivityThread.main:9569
+  at java.lang.reflect.Method.invoke:-2
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run:575
+  at com.android.internal.os.ZygoteInit.main:975
+android.os.DeadObjectException
+  at android.os.BinderProxy.transactNative:-2
+  at android.os.BinderProxy.transact:656
+  at android.bluetooth.IBluetoothGatt$Stub$Proxy.writeCharacteristic:1238
+  at android.bluetooth.BluetoothGatt.writeCharacteristic:1489
+  at no.nordicsemi.android.ble.BleManagerHandler.internalWriteCharacteristic:1212
+  at no.nordicsemi.android.ble.BleManagerHandler.nextRequest:3676
+  at no.nordicsemi.android.ble.BleManagerHandler.enqueue:1651
+  at no.nordicsemi.android.ble.Request.enqueue:1209
+  at no.nordicsemi.android.ble.TimeoutableRequest.enqueue:106
+  at org.walkpadhealth.ble.PadManager.send:100
+  at org.walkpadhealth.service.WalkService.runCommand:174
+  at org.walkpadhealth.service.WalkService.onStartCommand:159
+  at android.app.ActivityThread.handleServiceArgs:5854
+  at android.app.ActivityThread.-$$Nest$mhandleServiceArgs:0
+  at android.app.ActivityThread$H.handleMessage:2866
+  at android.os.Handler.dispatchMessageImpl:142
+  at android.os.Handler.dispatchMessage:125
+  at android.os.Looper.loopOnce:296
+  at android.os.Looper.loop:397
+  at android.app.ActivityThread.main:9569
+  at java.lang.reflect.Method.invoke:-2
+  at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run:575
+  at com.android.internal.os.ZygoteInit.main:975

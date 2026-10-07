@@ -21,6 +21,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.ParcelUuid
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -137,7 +138,7 @@ class WalkService : Service() {
     private fun connect(device: BluetoothDevice, auto: Boolean = false) {
         if (connecting) return
         connecting = true; pendingAddress = device.address
-        manager?.connectTo(device, auto)
+        try { manager?.connectTo(device, auto) } catch (e: RuntimeException) { connecting = false; recoverFromDeadGatt(e) }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -149,9 +150,7 @@ class WalkService : Service() {
         log = FrameLog(File(filesDir, "raw"))
         scope.launch { AppDb.cachedProfile = AppDb.get(this@WalkService).profile().get()?.toProfile() }
         if (manager == null) {
-            manager = PadManager(this,
-                { b -> main.post { handleFff1(b) } }, { b -> main.post { handleFtms(b) } }, { c -> main.post { handleConnection(c) } },
-                { b -> main.post { handleControlReply(b) } })
+            manager = newManager()
             main.post(ticker)
             findPad()
         }
@@ -159,6 +158,21 @@ class WalkService : Service() {
             runCatching { PadCommand.valueOf(intent.getStringExtra(EXTRA_COMMAND) ?: "") }.getOrNull()?.let(::runCommand)
         }
         return START_STICKY
+    }
+
+    private fun newManager() = PadManager(this,
+        { b -> main.post { handleFff1(b) } }, { b -> main.post { handleFtms(b) } }, { c -> main.post { handleConnection(c) } },
+        { b -> main.post { handleControlReply(b) } })
+
+    /**
+     * The Bluetooth stack can drop the GATT object without telling us (Bluetooth restarted, link lost silently); the next write then
+     * throws DeadObjectException. Treat it as a lost connection: drop the old manager, start a fresh one and look for the pad again.
+     */
+    private fun recoverFromDeadGatt(e: RuntimeException) {
+        Log.w("WalkpadBle", "GATT is dead, rebuilding the connection", e)
+        manager?.close()
+        manager = newManager()
+        handleConnection(false)
     }
 
     /**
@@ -171,7 +185,13 @@ class WalkService : Service() {
         val m = manager ?: return
         pendingCmd = cmd; pendingBefore = last.status
         val seq = ++cmdSeq
-        m.send(cmd) { written -> main.post { if (!written && pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.FAILED) } }
+        try {
+            m.send(cmd) { written -> main.post { if (!written && pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.FAILED) } }
+        } catch (e: RuntimeException) {
+            finishCommand(CommandResult.NOT_CONFIRMED)
+            recoverFromDeadGatt(e)
+            return
+        }
         main.postDelayed({ if (pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.NOT_CONFIRMED) }, 2_500)
     }
 
