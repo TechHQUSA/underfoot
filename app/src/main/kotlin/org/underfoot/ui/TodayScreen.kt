@@ -42,7 +42,6 @@ import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.Button
@@ -85,12 +84,12 @@ private const val DIAL_MAX_KMH = 6.44
 @Composable
 fun TodayScreen(
     live: Live, today: DayTotals, profileSet: Boolean, imperial: Boolean,
-    controlsEnabled: Boolean, onCommand: (PadCommand) -> Unit, onSetSpeed: (Double) -> Unit, onOpenSettings: () -> Unit,
+    controlsEnabled: Boolean, onCommand: (PadCommand) -> Unit, onSetSpeed: (Double) -> Unit,
 ) {
     val allowed = FtmsControl.allowed(live.status, live.connected)
     var dragging by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), userScrollEnabled = !dragging, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        item { Header(live, onOpenSettings) }
+        item { Header(live) }
         if (live.problem != Problem.NONE) item {
             Text(
                 stringResource(when (live.problem) {
@@ -130,7 +129,7 @@ fun TodayScreen(
     }
 }
 
-@Composable private fun Header(live: Live, onOpenSettings: () -> Unit) {
+@Composable private fun Header(live: Live) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.SpaceBetween) {
         Column {
             Text(stringResource(R.string.app_title), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -151,7 +150,6 @@ fun TodayScreen(
                 )
             }
         }
-        IconButton(onClick = onOpenSettings) { Icon(Icons.Filled.Settings, contentDescription = stringResource(R.string.tab_settings)) }
     }
 }
 
