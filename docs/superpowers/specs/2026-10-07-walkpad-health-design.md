@@ -1,113 +1,107 @@
 # Walkpad Health - Design Spec
 
-Date: 2026-10-07
-Status: draft, awaiting owner review
+Date: 2026-10-07 (updated after hardware testing)
+Status: implemented for version 0.1; living document. The original design was approved before any code; sections marked "changed" record where measured reality or the owner's later decisions moved it.
 
 ## 1. Purpose
 
-A free, open-source Android app that tracks sessions on a UREVO walking pad (BLE name `URTM059`, "2D Pro") with no account and no login, and writes them to Health Connect. It shows steps, time, distance and calories. Distribution: GitHub releases and F-Droid.
+A free, open-source Android app for a UREVO walking pad (BLE name `URTM059`, "2D Pro") with no account and no login. It records walks, writes them to Health Connect, and shows steps, time, distance and calories. It can also start, pause, resume and stop the belt. Distribution: GitHub releases and F-Droid.
 
 ### Success criteria
-- A walk on the pad is recorded and appears in Health Connect without the user opening the app.
+- A walk on the pad is recorded and appears in History and in Health Connect without the user opening the app (status: History confirmed on hardware; Health Connect pending the owner's check).
 - No analytics, no account, no network use by the app. Crash reports are opt-in and sent only after the user taps Send.
 - Every dependency is F-Droid-compatible (no Google Play Services, no proprietary SDKs).
-- Protocol logic is unit-tested without hardware.
+- Protocol logic is unit-tested without hardware, using frames captured from the real pad.
 
-### Non-goals (v1)
-- Controlling the pad (start, stop, speed). The driver is designed so control can be added later, but v1 never writes control frames. Only the two handshake frames are written (see 3.1).
-- Other pad models, iOS, wear devices, cloud sync, social features.
+### Non-goals
+- Other pad models (the driver is a class in `:protocol`, so a model can be added), iOS, wear devices, cloud sync, social features.
+- Setting the belt speed. Only Start, Pause, Resume and Stop are sent.
 
-## 2. Decisions (agreed with owner)
+## 2. Decisions
 
 | Topic | Decision |
 |---|---|
-| Scope | Track only. Control is a later, separate spec. |
-| Recording | Auto: a foreground service connects when the pad is on and records while the belt runs. |
+| Scope (changed) | Tracking, plus Start/Pause/Resume/Stop control through the standard FTMS Control Point. The original spec was track-only; the owner added control after measuring all commands on the pad. |
+| Recording | Auto: a foreground service connects when the pad is on and records while the belt runs. A pause of 60 s ends the walk. |
 | Profile | Weight and height entered in Settings, stored on device. No Health Connect read permissions. |
+| Units (added) | Imperial by default (mph, miles, pounds, inches), with a Settings switch. Everything is stored in metric. |
 | Structure | Two Gradle modules: `:protocol` (pure Kotlin) and `:app`. |
 | Stack | Kotlin, Jetpack Compose + Material 3, minSdk 26, Room, Nordic Android-BLE-Library (Apache-2.0, stable). |
+| Look (changed) | Dark with a lime accent and a speed dial, light variant following the system. No dynamic color. Design from the owner's mockup. |
 | Crash reports | Small custom handler: stack frames only (no exception messages), prompt after a crash, sent only on user tap through the share sheet, no server. Replaces ACRA (needs a mailto address and a dependency). |
 | License | GPL-3.0-or-later. |
 | Attribution | Protocol facts credit the TreadSpan (E1L) and urevo-darwin (5L) research. No code is copied from either. |
 | Repo | Standalone `walkpad-health`, unrelated to any other project. |
 
-## 3. Protocol basis and risk
+## 3. Protocol (measured on URTM059; full detail in `PROTOCOL.md`)
 
-### 3.1 Known (from the 5L / E1L research, same OEM family)
-- Services `0xFFF0` (`fff1` notify telemetry, `fff2` write), `0xFEE0`, `0x1826` (FTMS, `2acd` treadmill data), `0x180A`. Confirmed present on `URTM059` via nRF Connect.
-- `fff1` stays silent until two handshake frames are written to `fff2`: `02 51 0b 03` then `02 50 03 09 03`.
-- `fff1` frames start `02 51`; byte 2 is status (`00` idle, `01` stopped, `03` running, `04` pausing, `0a` paused); bytes 3-4 are speed (u16 LE, raw 0.1 km/h). Later bytes (elapsed time, distance) are only partly mapped.
+- Handshake: write `02 51 0B 03` then `02 50 03 09 03` to `fff2`; the pad acknowledges on `fff1`. A larger MTU must be requested first: the 25-byte running frame does not fit the default payload, and without the request only idle pings arrive.
+- `fff1` sends status (`00` idle, `02` countdown, `03` running, `04` pausing, `0A` paused), elapsed seconds and energy in tenths of a kcal. Its speed and distance fields are in miles, so they are not decoded.
+- Standard FTMS Treadmill Data (`2ACD`) supplies speed (km/h), distance (m), energy and elapsed time in SI units. The app merges it with `fff1`.
+- The pad has no step count. Steps are estimated.
+- The console's Stop button only pauses; the pad stays PAUSED, so the app ends a walk after 60 s of pause.
+- Control Point (`2AD9`): `00` request control (once per connection), `07` start or resume, `08 02` pause, `08 01` stop (ends the workout, console shows END). All measured with nobody on the belt, then through the app.
 
-### 3.2 Unknown (must be measured on the real pad)
-- Whether `URTM059` uses the same `fff1` layout, and which fields it reports (distance, steps, calories).
-- Whether `2acd` carries distance, energy and elapsed time on this model.
-
-### 3.3 Mitigation
-Phase 0 captures real frames with an in-app raw log before any field mapping is trusted. Decoders are written against captured fixtures. Unknown frame shapes are ignored and logged, never guessed.
+Unknowns that remain: the exact control-point indications, `fff1` status after stop, the meaning of `fff1` bytes 11-12 and the checksum, and whether the units change when the console is set to km.
 
 ## 4. Architecture
 
 ### 4.1 `:protocol` (pure Kotlin/JVM, no Android imports)
-- `UrevoDriver`: decodes raw `fff1` / `2acd` bytes into `Telemetry(status, speedKmh, elapsedSec, distanceM?, steps?, kcal?)`. Exposes `handshakeFrames`.
-- `SessionTracker`: state machine idle, running, paused, stopped. Emits `SessionSummary`. A disconnect longer than 60 s ends the session.
-- `Estimators`: steps = distance / stride (stride derived from height); calories via the ACSM walking equation from speed, duration and weight. Used only for fields the pad does not report.
+- `UrevoDriver`: `decodeFff1`, `decodeFtms`, `handshakeFrames`. Bounds-checked; never throws.
+- `TelemetryMerger`: combines the `fff1` status, elapsed and energy with the FTMS speed and distance.
+- `SessionTracker`: state machine with a monotonic clock supplied by the caller; ends a walk on stop or idle, after a 60 s disconnect, or after a 60 s pause; ignores gaps over 5 s; discards runs under 10 s; stores cumulative pad counters as the change since the start frame.
+- `FtmsControl`, `PadCommand`, `CommandGate`: the command bytes, reply parsing, which buttons are allowed for a belt status, how a command is confirmed from a status change, and a rate limit for Pause, Resume and Start (Stop is never held back).
+- `Estimators` and `finalize`: steps and calories for values the pad does not report, tagged as estimated.
 - Dependency rule: `:app` depends on `:protocol`, never the reverse.
 
 ### 4.2 `:app`
-- `ble/`: scan, connect, enable notifications, write handshake, reconnect (Nordic library).
-- `service/`: foreground service that pipes BLE bytes through the driver and tracker.
-- `data/`: Room entities `Session`, `Profile`; DAOs; a `pendingSync` flag on `Session`.
-- `health/`: Health Connect writer and a retrying `WorkManager` job.
-- `ui/`: Compose screens and view models.
+- `ble/`: `PadManager` (scan result, connect, MTU request, notifications, handshake, command writes), `FrameLog` (raw frame log).
+- `service/`: `WalkService`, a foreground service that pipes BLE bytes through the driver and tracker, runs commands, and rebuilds the connection if Android drops it.
+- `data/`: Room entities `Session` and `Profile`.
+- `health/`: Health Connect writer, a retrying `WorkManager` job, and the Settings button state.
+- `ui/`: Compose screens (Walk, History, Settings, a hidden raw-log screen with frame counters).
 - `crash/`: custom crash handler and share-sheet prompt.
 
 ## 5. Data flow
-1. The service scans for a device named `URTM0xx` (or the stored MAC), connects, enables notifications on `fff1` and `2acd`, and writes the handshake.
-2. Each frame goes driver, tracker. Belt running starts a session; stop, or disconnect over 60 s, ends it.
-3. A finished session is saved to Room first, then synced by a retrying worker to Health Connect as `ExerciseSession` plus `Steps`, `Distance` and `TotalCaloriesBurned`. The Room-first order means a failed sync loses nothing; sync is idempotent (client record id = session id).
+1. The service scans for a device named `URTM0xx` (or connects to the stored address), requests a larger MTU, enables notifications on `fff1` and `2acd` and indications on `2ad9`, and writes the handshake.
+2. Each `fff1` frame is merged with the latest FTMS reading and fed to the tracker. A running belt starts a session; stop, idle, a disconnect or a pause of 60 s ends it.
+3. A finished session is saved to Room first, then synced to Health Connect as `ExerciseSession` plus `Steps`, `Distance` and `TotalCaloriesBurned`. Sync is idempotent (stable client record ids) and a session that Health Connect permanently rejects is skipped so it cannot block later walks.
+4. A button tap goes through `WalkService.command`, which checks the allowed buttons for the belt status, applies the rate limit, requests control once, writes the command, and confirms it from the pad's reply or a matching status change. No reply and no change shows "The pad did not respond".
 
 ## 6. Numbers
 - Device-reported values win. Missing values are estimated.
-- Each session stores a source tag per metric (`device` or `estimated`); the UI shows it.
+- Each session stores a source tag per metric (`DEVICE` or `ESTIMATED`); History shows how many are estimated.
 - Estimators are pure functions with fixed-input tests.
 
 ## 7. UI
-- **Today:** live card while walking (speed, time, distance, steps, kcal), day totals, session list.
-- **History:** sessions by day; per-session detail with source tags.
-- **Settings:** profile (weight, height), Health Connect permission and status, auto-record toggle, crash-report toggle, paired pad.
-- **Raw log** (hidden, behind a Settings tap sequence): records frames to a file and exports it. Used for Phase 0 and bug reports.
-- Simple, system-themed (light/dark, dynamic color), accessible text sizes.
+- **Walk:** status dot and line, speed dial (mph or km/h), time, distance, kcal and steps, the Start/Pause/Resume button and a red Stop button, "Today" tiles. The buttons can be switched off in Settings.
+- **History:** sessions, newest first, with estimated and not-synced notes.
+- **Settings:** profile, units, Health Connect (install, allow, or "Connected"), auto-record, pad controls, crash prompt, forget paired pad.
+- **Raw log** (hidden, tap the version row 7 times): frame counters, recording switch, export, clear.
 
 ## 8. Privacy and security
-- No `INTERNET` permission. The crash send uses the system share sheet / mail intent.
-- No analytics, no ads, no identifiers. Data stays in the app's private Room database.
-- Permissions: Bluetooth scan/connect, notifications, foreground service (connected device), Health Connect write only.
-- Android backup of the app database is disabled unless the owner opts in later.
+- No `INTERNET` permission. The crash send uses the system share sheet.
+- No analytics, no ads, no identifiers. Data stays in the app's private Room database, excluded from cloud backup and device transfer.
+- Permissions: Bluetooth scan/connect, notifications, foreground service (connected device), boot completed, Health Connect write only.
+- The app writes to the pad only on a button tap (plus the two handshake frames and the one-time request-control write). Pause, Resume and Start are rate-limited; Stop never is.
 - Frames from the pad are untrusted input: decoders bounds-check length and ignore malformed frames; they never throw into the service.
 
 ## 9. Error handling
-Each case gets a plain, localized message and a recovery action: Bluetooth off, permission denied, pad out of range, pad connected but silent (handshake failed), Health Connect missing or not permitted (sessions queue and retry), storage full.
+Plain messages with a recovery action: Bluetooth off, permission denied, scan failed (bounded retry), pad did not respond or refused a command, storage full (queued and retried), Health Connect missing or not permitted (sessions queue and retry), dead Bluetooth connection (rebuilt automatically).
 
 ## 10. Testing
-- `:protocol`: JVM unit tests against byte fixtures (captured from the pad), the tracker state machine, and the estimators.
-- `:app`: Room instrumented tests; a fake driver and fake BLE source to exercise the service and UI without hardware.
-- Manual: a hardware checklist run on the real pad before each release.
-- CI: lint, unit tests, assemble.
+- `:protocol`: JVM unit tests, including real frames from the pad, the tracker state machine, control rules and the estimators.
+- `:app`: unit tests for formatting, mapping, the frame log, crash reports and sync; a Room instrumented test (compiles; needs a phone to run).
+- Manual: the hardware checklist in `CONTRIBUTING.md` before each release.
+- CI: lint, unit tests, assemble, and a reproducible-build check.
 
 ## 11. Delivery
 - GitHub: signed APK attached to tagged releases by CI.
-- F-Droid: reproducible build, metadata file, no proprietary dependencies, no anti-features. The Health Connect client (`androidx.health.connect`) is open source.
-- Docs: README (install, pairing, privacy), `PROTOCOL.md` (what was measured on `URTM059`, with credits), `CONTRIBUTING.md`.
+- F-Droid: reproducible build, metadata in the repo, no proprietary dependencies. Needs the maintainer to create the signing key and submit the recipe.
+- Docs: `README.md`, `PROTOCOL.md`, `CONTRIBUTING.md`.
 
-## 12. Phases
-0. Raw-frame capture from the pad; fill 3.2.
-1. `:protocol` and tests.
-2. BLE service and Room.
-3. Health Connect sync.
-4. UI.
-5. Release (GitHub, then F-Droid submission).
-
-## 13. Open items
-- Field map for `URTM059` (Phase 0).
-- Whether steps are device-reported (decides if the stride estimator is needed on this model).
-- App name and application id (working name: Walkpad Health, `org.walkpadhealth`).
+## 12. Open items
+- Confirm the walk reaches Health Connect on hardware and that History numbers match the console.
+- Measure the control-point indications and the `fff1` status after stop.
+- Release setup: keystore, secrets, public repo URL, tag.
+- App name and application id are still the working names (Walkpad Health, `org.walkpadhealth`).

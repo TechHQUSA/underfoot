@@ -1,24 +1,38 @@
 # Walkpad Health
 
-Open-source Android app that records UREVO walking-pad sessions over Bluetooth LE and writes them to Health Connect. No account, no analytics.
+Open-source Android app for UREVO walking pads. It records your walks over Bluetooth LE, saves them to Health Connect, and lets you start, pause, resume and stop the belt. No account, no analytics.
 
-Status: version 0.1 in development. The Bluetooth field map for the URTM059 still needs a capture from the real pad; see `PROTOCOL.md`.
+Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro"). Releases are not published yet.
+
+## What it does
+- **Records automatically.** When the pad is on, a background service connects and records while the belt runs. A walk ends when you stop, or after a minute of pause.
+- **Shows live numbers:** speed (mph, or km/h), time, distance, calories and steps, with a speed dial.
+- **Controls the belt:** Start, Pause/Resume and a red Stop button. They send only what you tap, and you can switch the buttons off in Settings.
+- **Saves to Health Connect** as a Walking exercise session with steps, distance and total calories.
+- **Keeps a history** with each value marked as reported by the pad or estimated.
+
+Steps and some calories are estimates. The pad reports time, distance, speed and energy, but not steps; the app estimates steps from distance and your height, and says so.
 
 ## Install
-- GitHub releases: download the signed APK.
+- GitHub releases: download the signed APK (not published yet).
 - F-Droid: submission pending.
 
 ## First run
-1. Grant the Bluetooth and notification permissions when asked.
-2. In Settings, allow writing to Health Connect and enter your weight and height (used for estimates; stored on the device only).
-3. Turn the pad on. The app finds it, connects, and records while the belt runs.
-4. Exempt the app from battery optimization so recording survives screen-off. If the OS kills the app, it resumes at the next boot or the next time you open it.
+1. Allow the Bluetooth and notification permissions when asked.
+2. In Settings, tap **Allow writing to Health Connect** and grant the four write permissions. The button then reads "Connected to Health Connect". On Android 13 and older, Health Connect is a separate app and the button opens its store page.
+3. Enter your weight and height (used for estimates; stored on the device only). Units are miles and pounds by default, with a switch for metric.
+4. Turn the pad on. The app finds it, connects, and shows "Connected locally".
+5. Exempt the app from battery optimization so recording survives screen-off. If the OS kills the app, it resumes at the next boot or the next time you open it.
+
+The pad talks to one app at a time. Close other apps that use it (including the official one) while Walkpad Health is running.
 
 ## Privacy
-No network permission, no analytics, no ads. After a crash the app offers to share the error type, code locations and app version through the system share sheet; nothing is sent unless you tap Send.
+No network permission, no analytics, no ads. Your data stays on the phone, excluded from cloud backup and device transfer. After a crash the app offers to share the error type, code locations and app version through the system share sheet; nothing is sent unless you tap Send.
 
-## Supported device
-UREVO URTM059 (walking pad). Other pads in the same family may work; they are untested.
+The app writes to the pad only when you tap a button, apart from the Bluetooth handshake that makes the pad start sending data.
+
+## Supported devices
+UREVO URTM059 only. Other pads in the same family may work; they are untested. See `PROTOCOL.md` for what was measured, and `CONTRIBUTING.md` for how to add a model.
 
 ## Build
-See `CONTRIBUTING.md`. License: GPL-3.0-or-later.
+See `CONTRIBUTING.md`. JDK 17 and the Android SDK (platform 36). License: GPL-3.0-or-later.
