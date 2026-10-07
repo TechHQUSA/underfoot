@@ -102,6 +102,7 @@ class WalkService : Service() {
     private var cmdSeq = 0
     private var lastSpeedMs = Long.MIN_VALUE / 2
     private var speedPending = false
+    private var speedSeq = 0
     private lateinit var prefs: AppPrefs
     private lateinit var log: FrameLog
     private var manager: PadManager? = null
@@ -211,6 +212,8 @@ class WalkService : Service() {
         lastSpeedMs = now
         val m = manager ?: return
         speedPending = true
+        val seq = ++speedSeq
+        main.postDelayed({ if (speedPending && seq == speedSeq) { speedPending = false; finishCommand(CommandResult.NOT_CONFIRMED) } }, 2_500)
         val target = kmh.coerceIn(SpeedTarget.MIN_KMH, SpeedTarget.MAX_KMH)
         try {
             m.sendFrame(FtmsControl.setSpeedFrame(target), "SET_SPEED") { written -> main.post { if (!written) { speedPending = false; finishCommand(CommandResult.FAILED) } } }
