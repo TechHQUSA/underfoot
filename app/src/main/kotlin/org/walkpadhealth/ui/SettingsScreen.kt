@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -54,8 +55,14 @@ private fun openHealthConnectPage(ctx: Context) {
 @Composable
 fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Double) -> Unit, onOpenRawLog: () -> Unit) {
     val ctx = LocalContext.current
-    var w by remember(profile) { mutableStateOf(profile?.weightKg?.toString() ?: "") }
-    var h by remember(profile) { mutableStateOf(profile?.heightCm?.toString() ?: "") }
+    var imperial by remember { mutableStateOf(prefs.imperial) }
+    // The profile is stored in kg/cm; the fields show the chosen units and use '.' as the decimal mark so parsing matches.
+    var w by remember(profile, imperial) {
+        mutableStateOf(profile?.let { "%.1f".format(Locale.US, if (imperial) kgToLb(it.weightKg) else it.weightKg) } ?: "")
+    }
+    var h by remember(profile, imperial) {
+        mutableStateOf(profile?.let { "%.1f".format(Locale.US, if (imperial) cmToIn(it.heightCm) else it.heightCm) } ?: "")
+    }
     var auto by remember { mutableStateOf(prefs.autoRecord) }
     var crash by remember { mutableStateOf(prefs.crashOffer) }
     var taps by remember { mutableIntStateOf(0) }
@@ -64,9 +71,14 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
 
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.settings_profile_title), style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(w, { w = it }, label = { Text(stringResource(R.string.label_weight)) }, keyboardOptions = num, singleLine = true)
-        OutlinedTextField(h, { h = it }, label = { Text(stringResource(R.string.label_height)) }, keyboardOptions = num, singleLine = true)
-        Button(onClick = { onSave(w.toDoubleOrNull() ?: 0.0, h.toDoubleOrNull() ?: 0.0) }) { Text(stringResource(R.string.save_profile)) }
+        Row { Text(stringResource(R.string.use_imperial), Modifier.weight(1f)); Switch(imperial, { imperial = it; prefs.imperial = it }) }
+        OutlinedTextField(w, { w = it }, label = { Text(stringResource(if (imperial) R.string.label_weight_lb else R.string.label_weight_kg)) }, keyboardOptions = num, singleLine = true)
+        OutlinedTextField(h, { h = it }, label = { Text(stringResource(if (imperial) R.string.label_height_in else R.string.label_height_cm)) }, keyboardOptions = num, singleLine = true)
+        Button(onClick = {
+            val wv = w.toDoubleOrNull() ?: 0.0
+            val hv = h.toDoubleOrNull() ?: 0.0
+            onSave(if (imperial) lbToKg(wv) else wv, if (imperial) inToCm(hv) else hv)
+        }) { Text(stringResource(R.string.save_profile)) }
         HorizontalDivider()
         // Without the Health Connect app (Android 9-13) the permission contract has nowhere to go and launch() would throw.
         val hcReady = HealthConnectClient.getSdkStatus(ctx) == HealthConnectClient.SDK_AVAILABLE

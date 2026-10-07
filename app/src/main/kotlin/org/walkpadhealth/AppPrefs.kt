@@ -10,6 +10,9 @@ class AppPrefs(ctx: Context) {
         get() = p.getBoolean("rawlog", false); set(v) = p.edit().putBoolean("rawlog", v).apply()
     var crashOffer: Boolean
         get() = p.getBoolean("crash", true); set(v) = p.edit().putBoolean("crash", v).apply()
+    /** Display units only; everything is stored in metric. */
+    var imperial: Boolean
+        get() = p.getBoolean("imperial", true); set(v) = p.edit().putBoolean("imperial", v).apply()
     /** MAC of the paired pad; connect directly when known, scan only when null. */
     var padAddress: String?
         get() = p.getString("pad", null); set(v) = p.edit().putString("pad", v).apply()

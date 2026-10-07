@@ -19,16 +19,21 @@
 
     <string name="stat_steps">Steps</string>
     <string name="stat_time">Time</string>
-    <string name="stat_km">km</string>
     <string name="stat_kcal">kcal</string>
-    <string name="stat_kmh">km/h</string>
-    <string name="session_summary">%1$s - %2$s km - %3$d steps - %4$.0f kcal</string>
+    <string name="unit_km">km</string>
+    <string name="unit_mi">mi</string>
+    <string name="unit_kmh">km/h</string>
+    <string name="unit_mph">mph</string>
+    <string name="session_summary">%1$s - %2$s %3$s - %4$d steps - %5$.0f kcal</string>
     <string name="session_estimated">%d estimated</string>
     <string name="session_not_synced">not synced</string>
 
     <string name="settings_profile_title">Profile (stays on this device)</string>
-    <string name="label_weight">Weight (kg)</string>
-    <string name="label_height">Height (cm)</string>
+    <string name="label_weight_kg">Weight (kg)</string>
+    <string name="label_height_cm">Height (cm)</string>
+    <string name="label_weight_lb">Weight (lb)</string>
+    <string name="label_height_in">Height (in)</string>
+    <string name="use_imperial">Use miles, mph, pounds and inches</string>
     <string name="save_profile">Save profile</string>
     <string name="allow_hc">Allow writing to Health Connect</string>
     <string name="install_hc">Health Connect is not installed or needs an update. Open its store page</string>

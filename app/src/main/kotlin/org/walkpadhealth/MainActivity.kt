@@ -100,8 +100,8 @@ class MainActivity : ComponentActivity() {
         }) { pad ->
             Box(Modifier.padding(pad)) {
                 when {
-                    tab == 0 -> TodayScreen(live, today, sessions, profile != null)
-                    tab == 1 -> HistoryScreen(sessions)
+                    tab == 0 -> TodayScreen(live, today, sessions, profile != null, prefs.imperial)
+                    tab == 1 -> HistoryScreen(sessions, prefs.imperial)
                     rawLog -> RawLogScreen(prefs) { rawLog = false }
                     else -> SettingsScreen(profile, prefs, { w, h -> vm.saveProfile(w, h) }, { rawLog = true })
                 }

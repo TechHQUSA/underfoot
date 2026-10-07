@@ -26,7 +26,7 @@ import org.walkpadhealth.data.SessionEntity
 import org.walkpadhealth.protocol.BeltStatus
 
 @Composable
-fun TodayScreen(live: Live, today: DayTotals, recent: List<SessionEntity>, profileSet: Boolean) {
+fun TodayScreen(live: Live, today: DayTotals, recent: List<SessionEntity>, profileSet: Boolean, imperial: Boolean) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (live.problem != Problem.NONE) item {
             Text(
@@ -39,22 +39,22 @@ fun TodayScreen(live: Live, today: DayTotals, recent: List<SessionEntity>, profi
             )
         }
         if (!profileSet) item { Text(stringResource(R.string.set_profile_hint), color = MaterialTheme.colorScheme.error) }
-        item { LiveCard(live) }
+        item { LiveCard(live, imperial) }
         item {
             Card(Modifier.fillMaxWidth()) {
                 Row(Modifier.padding(16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Stat(stringResource(R.string.stat_steps), today.steps.toString())
                     Stat(stringResource(R.string.stat_time), fmtDuration(today.activeSec))
-                    Stat(stringResource(R.string.stat_km), fmtKm(today.distanceM))
+                    Stat(stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), fmtDistance(today.distanceM, imperial))
                     Stat(stringResource(R.string.stat_kcal), "%.0f".format(today.kcal))
                 }
             }
         }
-        items(recent.take(5), key = { it.id }) { SessionRow(it) }
+        items(recent.take(5), key = { it.id }) { SessionRow(it, imperial) }
     }
 }
 
-@Composable private fun LiveCard(l: Live) = Card(Modifier.fillMaxWidth()) {
+@Composable private fun LiveCard(l: Live, imperial: Boolean) = Card(Modifier.fillMaxWidth()) {
     Column(Modifier.padding(16.dp)) {
         val title = when {
             !l.connected -> R.string.looking_for_pad
@@ -65,9 +65,9 @@ fun TodayScreen(live: Live, today: DayTotals, recent: List<SessionEntity>, profi
         Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Stat(stringResource(R.string.stat_kmh), "%.1f".format(l.speedKmh))
+            Stat(stringResource(if (imperial) R.string.unit_mph else R.string.unit_kmh), fmtSpeed(l.speedKmh, imperial))
             Stat(stringResource(R.string.stat_time), fmtDuration(l.activeSec))
-            Stat(stringResource(R.string.stat_km), fmtKm(l.distanceM))
+            Stat(stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), fmtDistance(l.distanceM, imperial))
             Stat(stringResource(R.string.stat_kcal), "%.0f".format(l.kcal))
             Stat(stringResource(R.string.stat_steps), l.steps.toString())
         }
@@ -79,8 +79,11 @@ fun TodayScreen(live: Live, today: DayTotals, recent: List<SessionEntity>, profi
     Text(label, style = MaterialTheme.typography.labelSmall)
 }
 
-@Composable fun SessionRow(s: SessionEntity) = ListItem(
-    headlineContent = { Text(stringResource(R.string.session_summary, fmtDuration(s.activeSec), fmtKm(s.distanceM), s.steps, s.kcal)) },
+@Composable fun SessionRow(s: SessionEntity, imperial: Boolean) = ListItem(
+    headlineContent = {
+        Text(stringResource(R.string.session_summary, fmtDuration(s.activeSec), fmtDistance(s.distanceM, imperial),
+            stringResource(if (imperial) R.string.unit_mi else R.string.unit_km), s.steps, s.kcal))
+    },
     supportingContent = {
         val est = listOf(s.distanceSource, s.stepsSource, s.kcalSource).count { it == "ESTIMATED" }
         val notes = buildList {
