@@ -170,7 +170,7 @@ fun TodayScreen(
     val shown = drag ?: tapped ?: live.speedKmh
     val fraction = (shown / DIAL_MAX_KMH).toFloat().coerceIn(0f, 1f)
     val fractionNow by rememberUpdatedState(fraction)
-    val track = MaterialTheme.colorScheme.surfaceVariant
+    val track = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
     val progress = MaterialTheme.colorScheme.primary
     fun pick(x: Float, y: Float, w: Int, h: Int): Double? =
         DialMath.fractionAtOrNull((x - w / 2.0), (y - h / 2.0))?.let { SpeedTarget.snap(it * SpeedTarget.MAX_KMH, imperial) }

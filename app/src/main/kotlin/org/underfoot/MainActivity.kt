@@ -50,12 +50,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = AppPrefs(this)
-        setContent { UnderfootTheme { App(prefs) } }
+        setContent {
+            var theme by remember { mutableStateOf(prefs.theme) }
+            UnderfootTheme(theme) { App(prefs) { theme = it; prefs.theme = it } }
+        }
     }
 
     override fun onResume() { super.onResume(); SyncScheduler.enqueue(this) }
 
-    @Composable private fun App(prefs: AppPrefs) {
+    @Composable private fun App(prefs: AppPrefs, onTheme: (String) -> Unit) {
         val perms = if (Build.VERSION.SDK_INT >= 31)
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -106,7 +109,7 @@ class MainActivity : ComponentActivity() {
                     )
                     tab == 1 -> HistoryScreen(sessions, prefs.imperial)
                     rawLog -> RawLogScreen(prefs) { rawLog = false }
-                    else -> SettingsScreen(profile, prefs, { w, h -> vm.saveProfile(w, h) }, { rawLog = true })
+                    else -> SettingsScreen(profile, prefs, { w, h -> vm.saveProfile(w, h) }, { rawLog = true }, onTheme)
                 }
             }
         }

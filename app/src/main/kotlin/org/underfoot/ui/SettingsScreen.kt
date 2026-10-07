@@ -34,6 +34,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,8 +73,9 @@ private fun openHealthConnectPage(ctx: Context) {
     }
 }
 
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Double) -> Unit, onOpenRawLog: () -> Unit) {
+fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Double) -> Unit, onOpenRawLog: () -> Unit, onTheme: (String) -> Unit) {
     val ctx = LocalContext.current
     var imperial by remember { mutableStateOf(prefs.imperial) }
     // The profile is stored in kg/cm; the fields show the chosen units and use '.' as the decimal mark so parsing matches.
@@ -84,6 +88,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     var auto by remember { mutableStateOf(prefs.autoRecord) }
     var crash by remember { mutableStateOf(prefs.crashOffer) }
     var controls by remember { mutableStateOf(prefs.controlsEnabled) }
+    var theme by remember { mutableStateOf(prefs.theme) }
     var taps by remember { mutableIntStateOf(0) }
     var hcState by remember { mutableStateOf<HcState?>(null) }
     var hcRefresh by remember { mutableIntStateOf(0) }
@@ -111,6 +116,15 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
                 val hv = h.toDoubleOrNull() ?: 0.0
                 onSave(if (imperial) lbToKg(wv) else wv, if (imperial) inToCm(hv) else hv)
             }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.save_profile)) }
+        }
+
+        Section(stringResource(R.string.settings_section_look), null) {
+            val modes = listOf("dark" to R.string.theme_dark, "light" to R.string.theme_light, "system" to R.string.theme_system)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                modes.forEachIndexed { i, (key, label) ->
+                    SegmentedButton(theme == key, { theme = key; onTheme(key) }, SegmentedButtonDefaults.itemShape(i, modes.size)) { Text(stringResource(label)) }
+                }
+            }
         }
 
         Section(stringResource(R.string.settings_section_health), null) {

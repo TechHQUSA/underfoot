@@ -31,8 +31,9 @@ private val LightScheme = lightColorScheme(
     error = Color(0xFFBA1A1A), onError = Color.White, errorContainer = Color(0xFFFFDAD6), onErrorContainer = Color(0xFF410002),
 )
 
-/** Dark with a lime accent, or the light variant, following the system setting. */
+/** Dark with a lime accent (the default), the light variant, or whichever the system uses. */
 @Composable
-fun UnderfootTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) DarkScheme else LightScheme, content = content)
+fun UnderfootTheme(mode: String = "dark", content: @Composable () -> Unit) {
+    val dark = when (mode) { "light" -> false; "system" -> isSystemInDarkTheme(); else -> true }
+    MaterialTheme(colorScheme = if (dark) DarkScheme else LightScheme, content = content)
 }

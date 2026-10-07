@@ -19,6 +19,9 @@ class AppPrefs(ctx: Context) {
     /** Random per install, so Health Connect record ids never collide with those from an earlier install of this app. */
     val installId: String
         get() = p.getString("install", null) ?: java.util.UUID.randomUUID().toString().also { p.edit().putString("install", it).apply() }
+    /** "dark" (the default), "light" or "system". */
+    var theme: String
+        get() = p.getString("theme", "dark") ?: "dark"; set(v) = p.edit().putString("theme", v).apply()
     /** MAC of the paired pad; connect directly when known, scan only when null. */
     var padAddress: String?
         get() = p.getString("pad", null); set(v) = p.edit().putString("pad", v).apply()
