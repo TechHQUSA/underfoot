@@ -25,6 +25,9 @@
 - A session ends on a stop/idle frame or a disconnect longer than 60 s. Sessions are saved to Room before any Health Connect sync.
 - Pad frames are untrusted input: decoders bounds-check and never throw into the service.
 - Package `org.walkpadhealth`; working name "Walkpad Health".
+- All user-visible text comes from `strings.xml` (English only in 0.1; no hard-coded literals in Compose code).
+- Supported lifecycle: auto-record is a foreground service started at boot and at app open, kept alive by `START_STICKY`. If the OS kills it, it resumes at the next boot or app open; the README says so and recommends a battery-optimization exemption. Companion Device Manager association is a post-0.1 follow-up.
+- Device-reported distance, steps and kcal are treated as possibly cumulative: a session stores `latest - value at the start frame` (or `latest` if the counter went down).
 
 ## Review Focus
 1. Truncated or garbage frames (empty, 1-5 bytes, wrong header, 18-byte "running" frame with no speed) must yield `null` or a no-speed reading, never a crash. Pinned in Task 1.
@@ -55,7 +58,8 @@ walkpad-health/
     data/{Entities.kt,Daos.kt,AppDb.kt,Mapping.kt}
     health/{HealthGateway.kt,SyncSessions.kt,SyncWorker.kt}
     crash/CrashReporter.kt
-    ui/{MainViewModel.kt,Format.kt,TodayScreen.kt,HistoryScreen.kt,SettingsScreen.kt,RawLogScreen.kt}
+    ui/{MainViewModel.kt,Format.kt,Theme.kt,TodayScreen.kt,HistoryScreen.kt,SettingsScreen.kt,RawLogScreen.kt}
+  app/src/main/res/values/strings.xml
   app/src/test/kotlin/org/walkpadhealth/{SyncSessionsTest.kt,MappingTest.kt,FormatTest.kt}
   app/src/androidTest/kotlin/org/walkpadhealth/DaoTest.kt
 ```
@@ -225,6 +229,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
     androidTestImplementation(libs.room.testing)
+    androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
@@ -512,7 +517,7 @@ object Estimators {
 - Produces:
   - `enum class Source { DEVICE, ESTIMATED }`
   - `data class Profile(weightKg: Double, heightCm: Double) { companion object { val DEFAULT = Profile(70.0, 170.0) } }`
-  - `data class SessionSummary(startMs: Long, endMs: Long, activeSec: Long, integratedDistanceM: Double, deviceDistanceM: Double?, deviceSteps: Int?, deviceKcal: Double?)`
+  - `data class SessionSummary(startMs: Long, endMs: Long, activeSec: Long, integratedDistanceM: Double, deviceDistanceM: Double?, deviceSteps: Int?, deviceKcal: Double?, wallStartMs: Long = 0L)`
   - `data class FinalSession(startMs, endMs, activeSec: Long, distanceM: Double, distanceSource: Source, steps: Int, stepsSource: Source, kcal: Double, kcalSource: Source)`
   - `fun SessionSummary.finalize(profile: Profile): FinalSession`
   - `data class Progress(activeSec: Long, distanceM: Double)`
@@ -614,14 +619,57 @@ class SessionTrackerTest {
         assertEquals(40L, out.activeSec)
     }
 
-    @Test fun deviceReportedFieldsAreKeptLatestWins() {
+    @Test fun deviceTotalsAreSessionDeltasFromTheStartFrame() {
         val t = SessionTracker()
-        t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 10.0, steps = 14, kcal = 1.0), 0)
-        for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 10.0 + s, steps = 14 + s, kcal = 1.0 + s), s * 1000L)
+        t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 100.0, steps = 200, kcal = 10.0), 0)
+        for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 100.0 + s * 1.5, steps = 200 + s * 2, kcal = 10.0 + s), s * 1000L)
         val out = t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!
         assertEquals(30.0, out.deviceDistanceM)
-        assertEquals(34, out.deviceSteps)
-        assertEquals(21.0, out.deviceKcal)
+        assertEquals(40, out.deviceSteps)
+        assertEquals(20.0, out.deviceKcal)
+    }
+
+    @Test fun counterThatWentDownIsTreatedAsReset() {
+        val t = SessionTracker()
+        t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 100.0), 0)
+        for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 5.0), s * 1000L)
+        assertEquals(5.0, t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!.deviceDistanceM)
+    }
+
+    @Test fun nonFiniteDeviceValuesAreDropped() {
+        val t = SessionTracker()
+        t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 0.0), 0)
+        for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = Double.POSITIVE_INFINITY, kcal = Double.NaN), s * 1000L)
+        val out = t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!
+        assertNull(out.deviceDistanceM); assertNull(out.deviceKcal)
+    }
+
+    @Test fun distanceUsesThePreviousSpeedOverEachInterval() {
+        val t = SessionTracker(minActiveSec = 1)
+        t.onTelemetry(run(2.0), 0); t.onTelemetry(run(4.0), 1_000); t.onTelemetry(run(4.0), 2_000)
+        val out = t.onTelemetry(st(BeltStatus.STOPPED), 3_000)!!
+        assertEquals((2.0 + 4.0) / 3.6, out.integratedDistanceM, 1e-9)
+    }
+
+    @Test fun frameAtExactlySixtySecondsAfterDisconnectEndsOldSessionAndStartsANewOne() {
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        t.onDisconnect(31_000)
+        val old = t.onTelemetry(run(), 91_000)!!
+        assertEquals(31_000L, old.endMs); assertEquals(30L, old.activeSec)
+        assertTrue(t.isActive)                           // the new walk is its own session
+        assertEquals(Progress(0, 0.0), t.progress())
+    }
+
+    @Test fun summaryCarriesTheWallClockStartCapturedAtBegin() {
+        var wall = 1_700_000_000_000L
+        val t = SessionTracker(wallClock = { wall })
+        t.onTelemetry(run(), 0)
+        wall += 999_999                                   // wall clock jumps mid-walk; the stored start must not move
+        for (s in 1..20) t.onTelemetry(run(), s * 1000L)
+        val out = t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!
+        assertEquals(1_700_000_000_000L, out.wallStartMs)
+        assertEquals(21_000L, out.endMs - out.startMs)
     }
 
     @Test fun progressTracksTheOpenSession() {
@@ -678,6 +726,12 @@ class FinalizeTest {
         assertEquals(3000.0, f.distanceM); assertEquals(Source.ESTIMATED, f.distanceSource)
     }
 
+    @Test fun infiniteDeviceValuesAreIgnored() {
+        val f = sum(devDist = Double.POSITIVE_INFINITY, devKcal = Double.POSITIVE_INFINITY).finalize(Profile(70.0, 175.0))
+        assertEquals(3000.0, f.distanceM); assertEquals(Source.ESTIMATED, f.distanceSource)
+        assertEquals(Source.ESTIMATED, f.kcalSource)
+    }
+
     @Test fun badProfileGivesZeroEstimatesNotNaN() {
         val f = sum().finalize(Profile(Double.NaN, -5.0))
         assertEquals(0, f.steps); assertEquals(0.0, f.kcal)
@@ -708,6 +762,7 @@ data class SessionSummary(
     val deviceDistanceM: Double?,
     val deviceSteps: Int?,
     val deviceKcal: Double?,
+    val wallStartMs: Long = 0L,   // epoch time at the start frame; startMs/endMs are monotonic
 )
 
 data class FinalSession(
@@ -723,10 +778,10 @@ data class FinalSession(
 )
 
 fun SessionSummary.finalize(profile: Profile): FinalSession {
-    val devDist = deviceDistanceM?.takeIf { it > 0.0 }
-    val dist = devDist ?: integratedDistanceM
+    val devDist = deviceDistanceM?.takeIf { it.isFinite() && it > 0.0 }
+    val dist = devDist ?: integratedDistanceM.takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
     val steps = deviceSteps?.takeIf { it > 0 }
-    val kcal = deviceKcal?.takeIf { it > 0.0 }
+    val kcal = deviceKcal?.takeIf { it.isFinite() && it > 0.0 }
     return FinalSession(
         startMs, endMs, activeSec,
         dist, if (devDist != null) Source.DEVICE else Source.ESTIMATED,
@@ -742,20 +797,24 @@ package org.walkpadhealth.protocol
 
 data class Progress(val activeSec: Long, val distanceM: Double)
 
-/** Pure state machine. Not thread-safe: call from one thread. Times are epoch milliseconds. */
+/** Pure state machine. Not thread-safe: the caller must serialize all calls on one thread. Times are milliseconds on a monotonic clock the caller supplies (the service uses `SystemClock.elapsedRealtime()`); the caller converts summary times to epoch for storage. */
 class SessionTracker(
     private val gapMs: Long = 5_000,
     private val disconnectMs: Long = 60_000,
     private val minActiveSec: Long = 10,
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
+    private data class Totals(val dist: Double? = null, val steps: Int? = null, val kcal: Double? = null)
+
     private var startMs: Long? = null
+    private var wallStartMs = 0L
     private var lastMs = 0L
     private var lastStatus = BeltStatus.IDLE
+    private var lastSpeedKmh: Double? = null
     private var activeMs = 0L
     private var integratedM = 0.0
-    private var devDist: Double? = null
-    private var devSteps: Int? = null
-    private var devKcal: Double? = null
+    private var base = Totals()
+    private var latest = Totals()
     private var disconnectedAt: Long? = null
 
     val isActive: Boolean get() = startMs != null
@@ -763,25 +822,26 @@ class SessionTracker(
     fun progress() = Progress(activeMs / 1000, integratedM)
 
     fun onTelemetry(t: Telemetry, nowMs: Long): SessionSummary? {
+        val expired = tick(nowMs)            // an expired disconnect ends the old session before this frame is considered
         disconnectedAt = null
         val open = startMs != null
         if (open) {
             val dt = nowMs - lastMs
             if (lastStatus == BeltStatus.RUNNING && t.status == BeltStatus.RUNNING && dt in 1..gapMs) {
                 activeMs += dt
-                t.speedKmh?.let { integratedM += it / 3.6 * dt / 1000.0 }
+                lastSpeedKmh?.let { integratedM += it / 3.6 * dt / 1000.0 }   // previous speed held over the interval
             }
-            t.distanceM?.let { devDist = it }
-            t.steps?.let { devSteps = it }
-            t.kcal?.let { devKcal = it }
+            latest = Totals(t.distanceM ?: latest.dist, t.steps ?: latest.steps, t.kcal ?: latest.kcal)
         }
         lastMs = nowMs
         lastStatus = t.status
-        return when {
-            !open && t.status == BeltStatus.RUNNING -> { begin(nowMs); null }
+        lastSpeedKmh = t.speedKmh
+        val ended = when {
+            !open && t.status == BeltStatus.RUNNING -> { begin(nowMs, t); null }
             open && (t.status == BeltStatus.STOPPED || t.status == BeltStatus.IDLE) -> end(nowMs)
             else -> null
         }
+        return ended ?: expired
     }
 
     fun onDisconnect(nowMs: Long) {
@@ -795,20 +855,33 @@ class SessionTracker(
 
     fun finish(nowMs: Long): SessionSummary? = if (startMs != null) end(nowMs) else null
 
-    private fun begin(nowMs: Long) {
-        startMs = nowMs; activeMs = 0; integratedM = 0.0
-        devDist = null; devSteps = null; devKcal = null
+    private fun begin(nowMs: Long, t: Telemetry) {
+        startMs = nowMs; wallStartMs = wallClock(); activeMs = 0; integratedM = 0.0
+        base = Totals(t.distanceM, t.steps, t.kcal); latest = base
+    }
+
+    private fun delta(b: Double?, l: Double?): Double? = when {
+        l == null || !l.isFinite() -> null
+        b != null && b.isFinite() && l >= b -> l - b
+        else -> l                                  // counter reset: the latest value is the session value
     }
 
     private fun end(endMs: Long): SessionSummary? {
         val s = startMs ?: return null
-        val summary = SessionSummary(s, endMs, activeMs / 1000, integratedM, devDist, devSteps, devKcal)
+        val summary = SessionSummary(
+            s, endMs, activeMs / 1000, integratedM,
+            delta(base.dist, latest.dist),
+            delta(base.steps?.toDouble(), latest.steps?.toDouble())?.toInt(),
+            delta(base.kcal, latest.kcal),
+            wallStartMs,
+        )
         startMs = null; disconnectedAt = null; activeMs = 0; integratedM = 0.0
+        base = Totals(); latest = Totals()
         return if (summary.activeSec >= minActiveSec) summary else null
     }
 }
 ```
-Note: device fields are only captured while a session is open; the frame that starts the session (RUNNING at `begin`) sets them on the next frame.
+The start frame's device values are the baseline; the stored device value is `latest - baseline`, so cumulative pad counters give per-session numbers.
 
 - [ ] **Step 4: Run to verify they pass.** `./gradlew :protocol:test` → PASS (all protocol tests).
 
@@ -1012,7 +1085,7 @@ class DaoTest {
 **Interfaces:**
 - Consumes: `UrevoDriver.handshakeFrames` (Task 1).
 - Produces:
-  - `class AppPrefs(ctx)` with `var autoRecord: Boolean = true`, `var rawLog: Boolean = false`, `var crashOffer: Boolean = true`.
+  - `class AppPrefs(ctx)` with `var autoRecord: Boolean = true`, `var rawLog: Boolean = false`, `var crashOffer: Boolean = true`, `var padAddress: String? = null`.
   - `class FrameLog(dir: File, maxBytes: Long = 5_000_000)` with `fun append(source: String, bytes: ByteArray)`, `fun file(): File`, `fun clear()`. Line format: `<epochMs>\t<source>\t<hex>`.
   - `class PadManager(ctx, onFff1: (ByteArray)->Unit, onFtms: (ByteArray)->Unit, onConnection: (Boolean)->Unit) : BleManager` with `fun connectTo(device: BluetoothDevice)`.
 
@@ -1034,6 +1107,12 @@ class FrameLogTest {
         log.append("fff1", byteArrayOf(0x02, 0x51, 0x0a))
         val parts = log.file().readLines().single().split('\t')
         assertEquals("fff1", parts[1]); assertEquals("02510a", parts[2])
+    }
+
+    @Test fun highBytesAreNotSignExtended() {
+        val log = FrameLog(tmp())
+        log.append("fff1", byteArrayOf(0x80.toByte(), 0xff.toByte(), 0x00))
+        assertEquals("80ff00", log.file().readLines().single().split('\t')[2])
     }
 
     @Test fun truncatesOldestHalfWhenOverTheCap() {
@@ -1067,7 +1146,7 @@ class FrameLog(dir: File, private val maxBytes: Long = 5_000_000) {
     fun file(): File = f
 
     @Synchronized fun append(source: String, bytes: ByteArray) {
-        f.appendText("${System.currentTimeMillis()}\t$source\t${bytes.joinToString("") { "%02x".format(it) }}\n")
+        f.appendText("${System.currentTimeMillis()}\t$source\t${bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }}\n")
         if (f.length() > maxBytes) {
             val lines = f.readLines()
             f.writeText(lines.drop(lines.size / 2).joinToString("\n", postfix = "\n"))
@@ -1092,6 +1171,9 @@ class AppPrefs(ctx: Context) {
         get() = p.getBoolean("rawlog", false); set(v) = p.edit().putBoolean("rawlog", v).apply()
     var crashOffer: Boolean
         get() = p.getBoolean("crash", true); set(v) = p.edit().putBoolean("crash", v).apply()
+    /** MAC of the paired pad; connect directly when known, scan only when null. */
+    var padAddress: String?
+        get() = p.getString("pad", null); set(v) = p.edit().putString("pad", v).apply()
 }
 ```
 
@@ -1148,11 +1230,13 @@ class PadManager(
         }
 
         override fun initialize() {
+            // Nordic's request queue runs these in order, so the handshake below is sent only after fff1 is subscribed.
             setNotificationCallback(fff1).with { _, d -> d.value?.let(onFff1) }
             enableNotifications(fff1).enqueue()
             ftms?.let { c ->
                 setNotificationCallback(c).with { _, d -> d.value?.let(onFtms) }
-                enableNotifications(c).enqueue()
+                if (c.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) enableNotifications(c).enqueue()
+                else if (c.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) enableIndications(c).enqueue()
             }
             UrevoDriver.handshakeFrames.forEach {
                 writeCharacteristic(fff2, it, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT).enqueue()
@@ -1179,7 +1263,7 @@ If `writeCharacteristic` with `WRITE_TYPE_DEFAULT` is rejected by the pad (no fr
 
 **Interfaces:**
 - Consumes: `PadManager`, `FrameLog`, `AppPrefs` (Task 5), `SessionTracker`, `UrevoDriver`, `Profile`, `finalize` (Tasks 1-3), `AppDb`, `toEntity`, `toProfile` (Task 4).
-- Produces: `data class Live(connected: Boolean = false, status: BeltStatus = IDLE, speedKmh: Double = 0.0, activeSec: Long = 0, distanceM: Double = 0.0, steps: Int = 0, kcal: Double = 0.0)`; `object LiveState { val flow: MutableStateFlow<Live> }`; `WalkService` (start with `ContextCompat.startForegroundService`); `SyncScheduler.enqueue(ctx)` is called here and defined in Task 8 (until then it is a stub in this task, replaced in Task 8).
+- Produces: `enum class Problem { NONE, BLUETOOTH_OFF, PERMISSION, SCAN_FAILED }`; `data class Live(problem: Problem = NONE, connected: Boolean = false, status: BeltStatus = IDLE, speedKmh: Double = 0.0, activeSec: Long = 0, distanceM: Double = 0.0, steps: Int = 0, kcal: Double = 0.0)`; `object LiveState { val flow: MutableStateFlow<Live> }`; `WalkService` (start with `ContextCompat.startForegroundService`); `SyncScheduler.enqueue(ctx)` is called here and defined in Task 8 (until then it is a stub in this task, replaced in Task 8).
 
 - [ ] **Step 1: Manifest.** Replace `AndroidManifest.xml`:
 ```xml
@@ -1257,7 +1341,10 @@ import android.app.Application
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.walkpadhealth.protocol.BeltStatus
 
+enum class Problem { NONE, BLUETOOTH_OFF, PERMISSION, SCAN_FAILED }
+
 data class Live(
+    val problem: Problem = Problem.NONE,
     val connected: Boolean = false,
     val status: BeltStatus = BeltStatus.IDLE,
     val speedKmh: Double = 0.0,
@@ -1278,15 +1365,16 @@ class WalkpadApp : Application() {
 ```
 Until Task 10, create `crash/CrashReporter.kt` with `object CrashReporter { fun install(app: android.app.Application) {} }` and replace it in Task 10. Likewise create `health/SyncScheduler.kt` with `object SyncScheduler { fun enqueue(ctx: android.content.Context) {} }` and replace it in Task 8.
 
-- [ ] **Step 3: `WalkService.kt`.**
+- [ ] **Step 3: `WalkService.kt`.** All BLE callbacks are re-posted to the main handler, so the tracker, the ticker and persistence run on one thread. Callers start the service only through `WalkService.sync`, which checks the Bluetooth permission first.
 ```kotlin
 package org.walkpadhealth.service
 
 import android.annotation.SuppressLint
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -1300,6 +1388,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.os.ParcelUuid
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -1308,9 +1397,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.walkpadhealth.AppPrefs
 import org.walkpadhealth.Live
 import org.walkpadhealth.LiveState
+import org.walkpadhealth.Problem
+import org.walkpadhealth.R
 import org.walkpadhealth.ble.FrameLog
 import org.walkpadhealth.ble.PadManager
 import org.walkpadhealth.data.AppDb
@@ -1326,9 +1419,29 @@ import org.walkpadhealth.protocol.UrevoDriver
 import org.walkpadhealth.protocol.finalize
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.ConcurrentLinkedQueue
+import org.walkpadhealth.protocol.FinalSession
 
-@SuppressLint("MissingPermission") // hasBtPermissions() is checked in onStartCommand before any BLE call
+@SuppressLint("MissingPermission") // btGranted() is checked in onStartCommand before any BLE call
 class WalkService : Service() {
+    companion object {
+        fun btGranted(ctx: Context): Boolean =
+            if (Build.VERSION.SDK_INT >= 31)
+                listOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
+                    .all { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
+            else ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+        /** Single entry point for the UI, the boot receiver and the auto-record toggle. */
+        fun sync(ctx: Context, prefs: AppPrefs) {
+            val i = Intent(ctx, WalkService::class.java)
+            if (prefs.autoRecord && btGranted(ctx)) ContextCompat.startForegroundService(ctx, i)
+            else {
+                ctx.stopService(i)
+                LiveState.flow.value = Live(problem = if (prefs.autoRecord) Problem.PERMISSION else Problem.NONE)
+            }
+        }
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tracker = SessionTracker()
@@ -1336,77 +1449,99 @@ class WalkService : Service() {
     private lateinit var log: FrameLog
     private var manager: PadManager? = null
     private var scanning = false
+    private var connecting = false
+    private var pendingAddress: String? = null     // saved as the paired pad only after the GATT services validate
+    private var scanRetries = 0
+    private var tickCount = 0
     private var last = Live()
+    private val unsaved = ConcurrentLinkedQueue<FinalSession>()
+    private val flushLock = Mutex()
 
     private val ticker = object : Runnable {
         override fun run() {
-            tracker.tick(System.currentTimeMillis())?.let(::persist)
+            tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
+            if (++tickCount % 30 == 0 && unsaved.isNotEmpty()) flushUnsaved()
             publish(); main.postDelayed(this, 1000)
         }
     }
 
     private val scanCb = object : ScanCallback() {
-        override fun onScanResult(callbackType: Int, result: ScanResult) {
-            val name = result.scanRecord?.deviceName ?: result.device.name
-            if (name?.startsWith("URTM") == true) { stopScan(); manager?.connectTo(result.device) }
-        }
+        override fun onScanResult(callbackType: Int, result: ScanResult) { main.post { handleScanResult(result) } }
+        override fun onScanFailed(errorCode: Int) { main.post { scanning = false; handleScanFailed() } }
+    }
+
+    private fun handleScanResult(result: ScanResult) {
+        if (connecting) return
+        val name = result.scanRecord?.deviceName ?: result.device.name
+        if (name?.startsWith("URTM") == true) { stopScan(); connect(result.device) }
+    }
+
+    /** Bounded retry: five attempts 10 s apart, then a visible SCAN_FAILED state until auto-record is toggled. */
+    private fun handleScanFailed() {
+        if (++scanRetries > 5) { last = last.copy(problem = Problem.SCAN_FAILED); publish(); return }
+        main.postDelayed({ findPad() }, 10_000)
+    }
+
+    private fun connect(device: BluetoothDevice) {
+        if (connecting) return
+        connecting = true; pendingAddress = device.address
+        manager?.connectTo(device)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startInForeground()
-        if (!hasBtPermissions()) { stopSelf(); return START_NOT_STICKY }
+        if (!btGranted(this)) { LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY }
+        try { startInForeground() } catch (e: SecurityException) { LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY }
         prefs = AppPrefs(this)
         log = FrameLog(File(filesDir, "raw"))
+        scope.launch { AppDb.cachedProfile = AppDb.get(this@WalkService).profile().get()?.toProfile() }
         if (manager == null) {
-            manager = PadManager(this, ::onFff1, ::onFtms, ::onConnection)
+            manager = PadManager(this,
+                { b -> main.post { handleFff1(b) } }, { b -> main.post { handleFtms(b) } }, { c -> main.post { handleConnection(c) } })
             main.post(ticker)
-            startScan()
+            findPad()
         }
         return START_STICKY
     }
 
-    private fun onFff1(bytes: ByteArray) {
+    private fun handleFff1(bytes: ByteArray) {
         if (prefs.rawLog) log.append("fff1", bytes)
         val t = UrevoDriver.decodeFff1(bytes) ?: return
-        tracker.onTelemetry(t, System.currentTimeMillis())?.let(::persist)
-        last = last.copy(status = t.status, speedKmh = t.speedKmh ?: last.speedKmh)
+        tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
+        last = last.copy(status = t.status, speedKmh = if (t.status == BeltStatus.RUNNING) (t.speedKmh ?: 0.0) else 0.0)
         publish()
     }
 
-    private fun onFtms(bytes: ByteArray) { if (prefs.rawLog) log.append("2acd", bytes) }
+    private fun handleFtms(bytes: ByteArray) { if (prefs.rawLog) log.append("2acd", bytes) }
 
-    private fun onConnection(connected: Boolean) {
+    private fun handleConnection(connected: Boolean) {
+        connecting = false
+        if (connected) { scanRetries = 0; pendingAddress?.let { prefs.padAddress = it } }   // onDeviceReady: services validated
         last = last.copy(connected = connected)
-        if (connected) stopScan() else { tracker.onDisconnect(System.currentTimeMillis()); main.postDelayed({ startScan() }, 5_000) }
+        if (!connected) {
+            tracker.onDisconnect(SystemClock.elapsedRealtime())
+            last = last.copy(status = BeltStatus.IDLE, speedKmh = 0.0)
+            main.postDelayed({ findPad() }, 5_000)
+        }
         publish()
     }
 
-    private fun persist(s: SessionSummary) {
-        scope.launch {
-            val db = AppDb.get(this@WalkService)
-            val profile = db.profile().get()?.toProfile() ?: Profile.DEFAULT
-            db.sessions().insert(s.finalize(profile).toEntity())
-            SyncScheduler.enqueue(this@WalkService)
+    /** Connect straight to the stored address, otherwise scan. Retries every 5 s while Bluetooth is off. */
+    private fun findPad() {
+        val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
+        if (adapter == null || !adapter.isEnabled) {
+            last = last.copy(problem = Problem.BLUETOOTH_OFF); publish(); main.postDelayed({ findPad() }, 5_000); return
         }
+        last = last.copy(problem = Problem.NONE)
+        val addr = prefs.padAddress
+        if (addr != null && BluetoothAdapter.checkBluetoothAddress(addr)) connect(adapter.getRemoteDevice(addr)) else startScan(adapter)
     }
 
-    private fun publish() {
-        val p = tracker.progress()
-        val h = (AppDb.cachedProfile ?: Profile.DEFAULT).heightCm
-        val w = (AppDb.cachedProfile ?: Profile.DEFAULT).weightKg
-        LiveState.flow.value = last.copy(
-            activeSec = p.activeSec, distanceM = p.distanceM,
-            steps = Estimators.steps(p.distanceM, h), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), w),
-        )
-    }
-
-    private fun startScan() {
-        if (scanning || !prefs.autoRecord) return
-        val scanner = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.bluetoothLeScanner ?: return
+    private fun startScan(adapter: BluetoothAdapter) {
+        if (scanning) return
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(UUID.fromString("00001826-0000-1000-8000-00805f9b34fb"))).build()
-        scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCb)
+        adapter.bluetoothLeScanner?.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCb)
         scanning = true
     }
 
@@ -1416,31 +1551,77 @@ class WalkService : Service() {
         scanning = false
     }
 
-    private fun hasBtPermissions(): Boolean =
-        if (Build.VERSION.SDK_INT >= 31)
-            listOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
-                .all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
-        else ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    private fun persist(s: SessionSummary) {
+        // Tracker times are monotonic. Stored start is the epoch time captured when the session began; end = start + monotonic duration.
+        val profile = AppDb.cachedProfile ?: Profile.DEFAULT
+        unsaved.add(s.copy(startMs = s.wallStartMs, endMs = s.wallStartMs + (s.endMs - s.startMs)).finalize(profile))
+        flushUnsaved()
+    }
+
+    /**
+     * Inserts queued sessions in order. A failed insert (for example storage full) leaves the session queued, shows a notification,
+     * and is retried every 30 s. A process death while storage is full loses the queued sessions; that cannot be avoided without storage.
+     */
+    private fun flushUnsaved() {
+        scope.launch {
+            flushLock.withLock {
+                val db = AppDb.get(this@WalkService)
+                while (true) {
+                    val next = unsaved.peek() ?: break
+                    try { db.sessions().insert(next.toEntity()); unsaved.poll() }
+                    catch (e: Exception) { notifyStorageFull(); return@launch }
+                }
+            }
+            SyncScheduler.enqueue(this@WalkService)
+        }
+    }
+
+    private fun notifyStorageFull() {
+        val n = NotificationCompat.Builder(this, "walk").setSmallIcon(android.R.drawable.ic_menu_directions)
+            .setContentTitle(getString(R.string.app_name)).setContentText(getString(R.string.storage_full)).build()
+        getSystemService(NotificationManager::class.java).notify(2, n)
+    }
+
+    private fun publish() {
+        val p = tracker.progress()
+        val prof = AppDb.cachedProfile ?: Profile.DEFAULT
+        LiveState.flow.value = last.copy(
+            activeSec = p.activeSec, distanceM = p.distanceM,
+            steps = Estimators.steps(p.distanceM, prof.heightCm), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), prof.weightKg),
+        )
+    }
 
     private fun startInForeground() {
         val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel("walk", "Walking pad", NotificationManager.IMPORTANCE_LOW))
-        val n: Notification = NotificationCompat.Builder(this, "walk")
+        nm.createNotificationChannel(NotificationChannel("walk", getString(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW))
+        val n = NotificationCompat.Builder(this, "walk")
             .setSmallIcon(android.R.drawable.ic_menu_directions)
-            .setContentTitle("Walkpad Health").setContentText("Waiting for your walking pad").setOngoing(true).build()
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.notif_text)).setOngoing(true).build()
         ServiceCompat.startForeground(this, 1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
     }
 
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
         stopScan()
-        tracker.finish(System.currentTimeMillis())?.let(::persist)
+        tracker.finish(SystemClock.elapsedRealtime())?.let(::persist)
         manager?.disconnect()?.enqueue()
         super.onDestroy()
     }
 }
 ```
-`AppDb.cachedProfile` is defined in Task 4. `MainViewModel` updates it when the profile is saved (Task 9); add one line to `WalkService.onStartCommand` so a service started at boot also has it: `scope.launch { AppDb.cachedProfile = AppDb.get(this@WalkService).profile().get()?.toProfile() }`.
+`AppDb.cachedProfile` is defined in Task 4; `MainViewModel` updates it when the profile is saved (Task 9).
+
+- [ ] **Step 3b: Strings.** Create `app/src/main/res/values/strings.xml` with these keys now; Task 9 adds the UI ones:
+```xml
+<resources>
+    <string name="app_name">Walkpad Health</string>
+    <string name="notif_channel">Walking pad</string>
+    <string name="notif_text">Waiting for your walking pad</string>
+    <string name="storage_full">Storage is full. The last walk is not saved yet; free up space soon.</string>
+</resources>
+```
+Set `android:label="@string/app_name"` in the manifest.
 
 `BootReceiver.kt`:
 ```kotlin
@@ -1449,13 +1630,12 @@ package org.walkpadhealth.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import androidx.core.content.ContextCompat
 import org.walkpadhealth.AppPrefs
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED || !AppPrefs(ctx).autoRecord) return
-        try { ContextCompat.startForegroundService(ctx, Intent(ctx, WalkService::class.java)) }
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        try { WalkService.sync(ctx, AppPrefs(ctx)) }
         catch (e: IllegalStateException) { /* OS refused a background start; the user opens the app once */ }
     }
 }
@@ -1491,7 +1671,7 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            ContextCompat.startForegroundService(this, Intent(this, WalkService::class.java))
+            WalkService.sync(this, AppPrefs(this))          // starts only if Bluetooth permission was granted
         }
         Button(onClick = { launcher.launch(perms) }) { Text("Start recording") }
     }
@@ -1508,7 +1688,7 @@ class MainActivity : ComponentActivity() {
 
 - [ ] **Step 1:** Owner installs the debug APK (`./gradlew :app:installDebug` with the phone on adb, or copy `app/build/outputs/apk/debug/app-debug.apk`).
 - [ ] **Step 2:** Before building, set the default of `AppPrefs.rawLog` to `true` (temporary; the toggle UI arrives in Task 9) so frames are logged. Rebuild, install, open the app, tap Start recording and grant permissions.
-- [ ] **Step 3:** Turn the pad on, walk at 2.0 km/h for 60 s, then 4.0 km/h for 60 s, then pause, resume, stop. Pull the log: `adb exec-out run-as org.walkpadhealth cat files/raw/frames.log > urtm059-capture.log`.
+- [ ] **Step 3:** Turn the pad on. Capture four controlled runs, noting the console readout at the end of each: (a) 60 s at 2.0 km/h, then 60 s at 4.0 km/h, then pause, resume, stop; (b) a second walk straight after (a) without disconnecting, to see whether pad totals reset or keep counting; (c) 10 minutes at 3.0 km/h with the console distance noted at the end; (d) one deliberate disconnect and reconnect mid-walk (walk out of range, or switch the phone's Bluetooth off for 20 s). Pull the log: `adb exec-out run-as org.walkpadhealth cat files/raw/frames.log > urtm059-capture.log`.
 - [ ] **Step 4:** Note the console readout at 3 moments (time, distance, calories, steps if the pad shows them) so decoded fields can be checked against it.
 - [ ] **Step 5:** Hand `urtm059-capture.log` and the console readings to the agent. Task 7 cannot start without them. Tasks 8-11 do not depend on the capture and may proceed before it.
 
@@ -1525,7 +1705,7 @@ class MainActivity : ComponentActivity() {
 - Produces: `UrevoDriver.decodeFff1` additionally filling `distanceM` / `steps` / `kcal` where the capture proves them; optionally `UrevoDriver.decodeFtms(frame): Telemetry?`.
 
 - [ ] **Step 1: Dump.** Write `CaptureTest.kt` with a helper that loads the log and prints, per source, each distinct frame length and a column view of the bytes that change over time. Run it with `./gradlew :protocol:test --tests '*CaptureTest' -i` and read the output.
-- [ ] **Step 2: Map.** For each field (elapsed, distance, steps, calories), find the offset whose values change monotonically and match the owner's console readings at the noted moments. A field is accepted only if it matches at least two readings and is monotonic across the capture. Record unconfirmed offsets as "unconfirmed" in `PROTOCOL.md`; do not decode them.
+- [ ] **Step 2: Map.** For each field (elapsed, distance, steps, calories), find the offset whose values change monotonically and match the owner's console readings at the noted moments. A field is accepted only if it matches the console readings in at least two of the controlled runs, is monotonic within a run, and its behaviour across run (b) (reset or cumulative) and run (d) (reconnect) is recorded in `PROTOCOL.md`. Rollover behaviour is tested with a captured or hand-built frame pair. Record unconfirmed offsets as "unconfirmed" in `PROTOCOL.md`; do not decode them.
 - [ ] **Step 3: Failing tests.** For each accepted field add a test in `UrevoDriverTest.kt` using a real captured frame copied verbatim, asserting the decoded value against the console reading. Run: expected FAIL.
 - [ ] **Step 4: Implement** the decoding in `UrevoDriver.kt`, with length bounds checks (a short frame yields `null` for the field, never an exception). Keep Task 1's synthetic tests green.
 - [ ] **Step 5: Verify.** `./gradlew :protocol:test` → PASS. Add a regression test that feeds every captured frame through the driver and `SessionTracker` and asserts: no exception, exactly one session produced for the walk, its `activeSec` within 3 s of the stopwatch time the owner recorded.
@@ -1637,7 +1817,7 @@ class SyncSessions(private val dao: SessionDao, private val gw: HealthGateway) {
 }
 ```
 
-`HealthGateway.kt` (verify the `Metadata` factory against the pinned `connect-client`; older alphas use `Metadata(clientRecordId = ...)`):
+`HealthGateway.kt` (verify the `Metadata` and `Device` factories against the pinned `connect-client`; older alphas use `Metadata(clientRecordId = ...)`):
 ```kotlin
 package org.walkpadhealth.health
 
@@ -1649,6 +1829,7 @@ import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.records.metadata.Device
 import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
 import androidx.health.connect.client.units.Length
@@ -1677,14 +1858,18 @@ class HealthConnectGateway(private val ctx: Context) : HealthGateway {
         val start = Instant.ofEpochMilli(s.startMs)
         val end = Instant.ofEpochMilli(maxOf(s.endMs, s.startMs + 1000))
         val off = ZoneId.systemDefault().rules.getOffset(start)
-        fun meta() = Metadata.manualEntry(clientRecordId = "walkpad-${s.id}")
-        val records = mutableListOf<Record>(
-            ExerciseSessionRecord(start, off, end, off, ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walking pad", metadata = meta()),
+        // Recorded by a device; one stable id per record type; the version is constant because sessions are immutable.
+        fun meta(kind: String) = Metadata.autoRecorded(
+            Device(type = Device.TYPE_UNKNOWN, manufacturer = "UREVO", model = "Walking pad"),
+            clientRecordId = "walkpad-${s.id}-$kind", clientRecordVersion = 0L,
         )
-        if (s.steps > 0) records += StepsRecord(start, off, end, off, s.steps.toLong(), meta())
-        if (s.distanceM > 0.0) records += DistanceRecord(start, off, end, off, Length.meters(s.distanceM), meta())
-        if (s.kcal > 0.0) records += TotalCaloriesBurnedRecord(start, off, end, off, Energy.kilocalories(s.kcal), meta())
-        c.insertRecords(records)   // same clientRecordId upserts, so a retry never duplicates
+        val records = mutableListOf<Record>(
+            ExerciseSessionRecord(start, off, end, off, ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walking pad", metadata = meta("exercise")),
+        )
+        if (s.steps > 0) records += StepsRecord(start, off, end, off, s.steps.toLong(), meta("steps"))
+        if (s.distanceM > 0.0) records += DistanceRecord(start, off, end, off, Length.meters(s.distanceM), meta("distance"))
+        if (s.kcal > 0.0) records += TotalCaloriesBurnedRecord(start, off, end, off, Energy.kilocalories(s.kcal), meta("kcal"))
+        c.insertRecords(records)   // an equal clientRecordId and version is ignored, so a retry after an ambiguous failure cannot duplicate
     }
 }
 ```
@@ -1729,7 +1914,7 @@ Delete the Task 6 `SyncScheduler` stub file.
 ### Task 9: UI
 
 **Files:**
-- Create: `app/src/main/kotlin/org/walkpadhealth/ui/{Format.kt,MainViewModel.kt,TodayScreen.kt,HistoryScreen.kt,SettingsScreen.kt,RawLogScreen.kt}`; modify `MainActivity.kt`, `data/AppDb.kt` (add `cachedProfile`)
+- Create: `app/src/main/kotlin/org/walkpadhealth/ui/{Format.kt,MainViewModel.kt,TodayScreen.kt,HistoryScreen.kt,SettingsScreen.kt,RawLogScreen.kt}`; modify `MainActivity.kt`
 - Test: `app/src/test/kotlin/org/walkpadhealth/FormatTest.kt`
 
 **Interfaces:**
@@ -1824,7 +2009,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
 import org.walkpadhealth.Live
+import org.walkpadhealth.Problem
+import org.walkpadhealth.R
 import org.walkpadhealth.data.SessionEntity
 import org.walkpadhealth.protocol.BeltStatus
 
@@ -1832,6 +2020,10 @@ import org.walkpadhealth.protocol.BeltStatus
 fun TodayScreen(live: Live, today: DayTotals, recent: List<SessionEntity>, profileSet: Boolean) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (!profileSet) item { Text("Set your weight and height in Settings for better estimates.", color = MaterialTheme.colorScheme.error) }
+        if (live.problem != Problem.NONE) item {
+            Text(stringResource(when (live.problem) { Problem.BLUETOOTH_OFF -> R.string.problem_bt_off; Problem.SCAN_FAILED -> R.string.problem_scan; else -> R.string.problem_permission }),
+                color = MaterialTheme.colorScheme.error)
+        }
         item { LiveCard(live) }
         item {
             Card(Modifier.fillMaxWidth()) {
@@ -1904,6 +2096,7 @@ import org.walkpadhealth.AppPrefs
 import org.walkpadhealth.data.ProfileEntity
 import org.walkpadhealth.health.HEALTH_PERMISSIONS
 import org.walkpadhealth.health.SyncScheduler
+import org.walkpadhealth.service.WalkService
 
 @Composable
 fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Double) -> Unit, onOpenRawLog: () -> Unit) {
@@ -1924,7 +2117,8 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         HorizontalDivider()
         Button(onClick = { hc.launch(HEALTH_PERMISSIONS) }) { Text("Allow writing to Health Connect") }
         HorizontalDivider()
-        Row { Text("Record automatically", Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it }) }
+        Row { Text("Record automatically", Modifier.weight(1f)); Switch(auto, { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }) }
+        OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }) { Text("Forget paired pad") }
         Row { Text("Offer to send crash reports", Modifier.weight(1f)); Switch(crash, { crash = it; prefs.crashOffer = it }) }
         Text("Version 0.1.0", Modifier.clickable { if (++taps >= 7) { taps = 0; onOpenRawLog() } })
     }
@@ -2000,7 +2194,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = AppPrefs(this)
-        setContent { MaterialTheme { App(prefs) } }
+        setContent { WalkpadTheme { App(prefs) } }
     }
 
     override fun onResume() { super.onResume(); SyncScheduler.enqueue(this) }
@@ -2010,9 +2204,9 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            ContextCompat.startForegroundService(this, Intent(this, WalkService::class.java))
+            WalkService.sync(this, prefs)          // starts only if Bluetooth permission was granted; otherwise Today shows why
         }
-        LaunchedEffect(Unit) { if (prefs.autoRecord) launcher.launch(perms) }
+        LaunchedEffect(Unit) { if (prefs.autoRecord) { if (WalkService.btGranted(this@MainActivity)) WalkService.sync(this@MainActivity, prefs) else launcher.launch(perms) } }
 
         val live by vm.live.collectAsStateWithLifecycle()
         val today by vm.today.collectAsStateWithLifecycle()
@@ -2042,6 +2236,30 @@ class MainActivity : ComponentActivity() {
 ```
 Add `androidx.compose.material:material-icons-extended` (already in `libs.compose.icons`).
 
+- [ ] **Step 6b: Theme and strings.** `ui/Theme.kt`:
+```kotlin
+package org.walkpadhealth.ui
+
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.LocalContext
+
+@Composable
+fun WalkpadTheme(content: @Composable () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val ctx = LocalContext.current
+    val scheme = when {
+        Build.VERSION.SDK_INT >= 31 -> if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        dark -> darkColorScheme()
+        else -> lightColorScheme()
+    }
+    MaterialTheme(colorScheme = scheme, content = content)
+}
+```
+Then move every user-visible literal in `TodayScreen`, `HistoryScreen`, `SettingsScreen`, `RawLogScreen` and the crash dialog into `strings.xml` and read it with `stringResource`. Add at least: `problem_bt_off` ("Bluetooth is off. Turn it on to record walks."), `problem_permission` ("Walkpad Health needs Bluetooth permission to find your pad. Open Settings to allow it."), `looking_for_pad`, `walking`, `connected`, `set_profile_hint`, the tab labels, the Settings labels, `not_synced`, `estimated_count`, `problem_scan` ("Could not scan for your pad. Turn automatic recording off and on to retry.") and `connected_idle` ("Connected. Start the belt to begin recording."), which Today shows whenever `connected && status == IDLE` as a neutral status, not a warning. A pad that connects but never sends frames is diagnosed with the raw log screen, not an automatic warning. `storage_full` already exists from Task 6. The queued-session retry is best effort: the message says the walk is not saved yet, because a process death while storage is full loses it. A journal file cannot fix that, since it also needs free storage.
+
 - [ ] **Step 7: Verify.** `./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug` → all pass. Install on the phone and check: Today shows "Looking for your pad...", Settings saves a profile, the raw log screen opens after 7 taps on the version row.
 
 - [ ] **Step 8: Commit.** `git add -A && git commit -m "feat(ui): today, history, settings, raw log screens"`
@@ -2068,10 +2286,15 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CrashReporterTest {
-    @Test fun reportHasVersionStackAndNoUserData() {
-        val text = CrashReporter.render(IllegalStateException("boom"), "0.1.0", 34)
-        assertTrue("0.1.0" in text && "SDK 34" in text && "IllegalStateException" in text && "boom" in text)
-        assertFalse("/Users/" in text)   // stack frames only; no paths, device ids or logs
+    @Test fun reportHasVersionAndFramesButNeverTheMessage() {
+        val text = CrashReporter.render(IllegalStateException("secret /Users/someone/file 02510314"), "0.1.0", 34)
+        assertTrue("0.1.0" in text && "SDK 34" in text && "java.lang.IllegalStateException" in text && "CrashReporterTest" in text)
+        assertFalse("secret" in text || "/Users/" in text || "02510314" in text)
+    }
+
+    @Test fun causesAreIncludedWithoutTheirMessages() {
+        val text = CrashReporter.render(RuntimeException("outer", IllegalArgumentException("inner-secret")), "0.1.0", 34)
+        assertTrue("java.lang.IllegalArgumentException" in text); assertFalse("inner-secret" in text)
     }
 }
 ```
@@ -2088,15 +2311,41 @@ import org.walkpadhealth.BuildConfig
 import java.io.File
 
 object CrashReporter {
-    fun render(t: Throwable, versionName: String, sdk: Int): String =
-        "Walkpad Health $versionName, SDK $sdk\n\n" + t.stackTraceToString().take(20_000)
+    /** Only class names, method names and line numbers. Exception messages are dropped because they can hold paths or user data. */
+    fun render(t: Throwable, versionName: String, sdk: Int): String = buildString {
+        append("Walkpad Health $versionName, SDK $sdk\n\n")
+        var c: Throwable? = t
+        var depth = 0
+        while (c != null && depth++ < 5) {
+            append(c.javaClass.name).append('\n')
+            c.stackTrace.take(40).forEach { append("  at ").append(it.className).append('.').append(it.methodName).append(':').append(it.lineNumber).append('\n') }
+            c = c.cause
+        }
+    }
 
     private fun file(ctx: Context) = File(File(ctx.filesDir, "crash").apply { mkdirs() }, "last.txt")
 
     fun pending(ctx: Context): File? = file(ctx).takeIf { it.exists() && it.length() > 0 }
     fun discard(ctx: Context) { file(ctx).delete() }
 
+    private fun offered(ctx: Context) = File(file(ctx).parentFile, "offered.txt")
+
+    /** Called when the user taps Send: the file moves aside so it is not prompted again but stays readable for the share sheet. */
+    fun markOffered(ctx: Context): File {
+        val dst = offered(ctx).also { it.delete() }
+        if (!file(ctx).renameTo(dst)) { file(ctx).copyTo(dst, overwrite = true); file(ctx).delete() }
+        dst.setLastModified(System.currentTimeMillis())          // a rename keeps the old time; retention counts from the offer
+        return dst
+    }
+
+    /** Offered files are kept 24 hours so a slow share target can still read them; never deleted merely because the app started. */
+    fun cleanOffered(ctx: Context) {
+        val f = offered(ctx)
+        if (f.exists() && System.currentTimeMillis() - f.lastModified() > 24 * 3_600_000L) f.delete()
+    }
+
     fun install(app: Application) {
+        cleanOffered(app)
         val prev = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { th, e ->
             try {
@@ -2116,9 +2365,9 @@ crash?.let { f ->
     AlertDialog(
         onDismissRequest = { },
         title = { Text("Walkpad Health crashed") },
-        text = { Text("Send the crash details? They contain only the error and app version. Nothing is sent unless you tap Send.") },
+        text = { Text("Send the crash details? They contain only the error type, code locations and app version, never messages or your data. Nothing is sent unless you tap Send.") },
         confirmButton = { TextButton({
-            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", f)
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", org.walkpadhealth.crash.CrashReporter.markOffered(this))
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }, "Send crash report"))
@@ -2128,7 +2377,7 @@ crash?.let { f ->
     )
 }
 ```
-A sent report file is deleted on the next launch's `discard`; to avoid a repeat prompt, call `CrashReporter.discard(this)` right after launching the chooser as well (the share sheet keeps its own read grant for the current send).
+On Send the file is renamed to `offered.txt` first and the share URI is built from that file, so the prompt does not repeat and the share sheet can still read it; `CrashReporter.install` deletes `offered.txt` only once it is more than 24 hours old.
 
 - [ ] **Step 4: Verify.** `./gradlew :app:testDebugUnitTest :app:assembleDebug`. Manual: add a temporary crash button, tap it, relaunch, confirm the dialog, confirm Discard removes it; remove the button.
 
@@ -2171,9 +2420,23 @@ Owner action (the agent cannot do these): generate a keystore (`keytool -genkeyp
 
 - [ ] **Step 2: F-Droid metadata.** `fastlane/metadata/android/en-US/short_description.txt`: `Track walking pad sessions to Health Connect. No account, no analytics.` `full_description.txt`: what it does, supported pad (`URTM059`, others untested), privacy (no network permission, crash report only when you tap Send), Health Connect requirement. `changelogs/1.txt`: `First release.` (versionCode 1). Then the owner opens a merge request to `gitlab.com/fdroid/fdroiddata` with `metadata/org.walkpadhealth.yml` (License GPL-3.0-or-later, Categories Sports & Health, SourceCode and IssueTracker URLs, `Builds` entry with `gradle: [yes]`, `subdir: app`, `AutoUpdateMode: Version`, `UpdateCheckMode: Tags`). The agent drafts the file; the owner submits it.
 
-- [ ] **Step 3: Docs.** `PROTOCOL.md`: services and characteristics confirmed on `URTM059`, the handshake and which write type worked (Task 5), the decoded fields from Task 7 with the evidence for each, and the unconfirmed offsets. Credit: "Protocol research builds on TreadSpan (E1L) and urevo-darwin (5L); no code was copied." `README.md`: what it is, install (GitHub releases, F-Droid), first-run steps (grant Bluetooth and notification permissions, allow Health Connect in Settings, enter weight and height, exempt the app from battery optimization so it survives screen-off), privacy statement, supported device, build instructions. `CONTRIBUTING.md`: how to add a driver (new class in `:protocol`, fixtures from a raw log, tests first).
+- [ ] **Step 3: Docs.** `PROTOCOL.md`: services and characteristics confirmed on `URTM059`, the handshake and which write type worked (Task 5), the decoded fields from Task 7 with the evidence for each, and the unconfirmed offsets. Credit: "Protocol research builds on TreadSpan (E1L) and urevo-darwin (5L); no code was copied." `README.md`: what it is, install (GitHub releases, F-Droid), first-run steps (grant Bluetooth and notification permissions, allow Health Connect in Settings, enter weight and height, exempt the app from battery optimization so it survives screen-off; if the OS kills the app it resumes at the next boot or app open), privacy statement, supported device, build instructions. `CONTRIBUTING.md`: how to add a driver (new class in `:protocol`, fixtures from a raw log, tests first).
 
-- [ ] **Step 4: Hardware checklist** (add to `CONTRIBUTING.md`, run before every release): pad on, app closed -> walk 2 minutes -> session appears in History and Health Connect with correct totals; pause and resume keeps one session; walking out of range 30 s and back keeps one session; out of range 70 s ends it; reboot phone with auto-record on -> service starts; Bluetooth off shows a clear message; Health Connect permission denied queues sessions and syncs after granting.
+- [ ] **Step 3b: Reproducibility.** Commit the drafted recipe as `fdroid/org.walkpadhealth.yml` (the file the owner submits to fdroiddata) and add a CI job to `.github/workflows/ci.yml`:
+```yaml
+  reproducible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :app:assembleRelease && cp app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/a.apk"
+      - run: ./gradlew clean :app:assembleRelease --no-build-cache && cmp "$RUNNER_TEMP/a.apk" app/build/outputs/apk/release/app-release-unsigned.apk
+```
+If `cmp` fails, find the non-determinism (usually an embedded timestamp; `dependenciesInfo` is already disabled in Task 0) before submitting to F-Droid.
+
+- [ ] **Step 4: Hardware checklist** (add to `CONTRIBUTING.md`, run before every release): pad on, app closed -> walk 2 minutes -> session appears in History and Health Connect with correct totals; pause and resume keeps one session; walking out of range 30 s and back keeps one session; out of range 70 s ends it; reboot phone with auto-record on -> service starts; Bluetooth off shows a clear message; Health Connect permission denied queues sessions and syncs after granting; in the Health Connect app, one walk shows as one Walking session with steps, distance and calories, and re-running sync (toggle permission off and on, reopen the app) creates no duplicates; with Bluetooth off or the permission revoked, Today shows the matching message.
 
 - [ ] **Step 5: Full verification.**
 Run: `./gradlew :protocol:test :app:testDebugUnitTest :app:lintDebug :app:assembleRelease` → all pass. Tag locally `git tag v0.1.0` only after the owner has run the hardware checklist; the owner pushes the tag.
@@ -2190,4 +2453,4 @@ Run: `./gradlew :protocol:test :app:testDebugUnitTest :app:lintDebug :app:assemb
 
 **Type consistency:** `Telemetry`, `BeltStatus`, `SessionSummary`, `FinalSession`, `Profile`, `Progress`, `SessionDao`, `HealthGateway`, `Live` names and signatures match across tasks. `AppDb.cachedProfile` is defined in Task 4 and used by Tasks 6 and 9.
 
-**Known gap to decide:** no Bluetooth-off or permission-denied banner in v1 (the service stops silently when permissions are missing). The spec lists these messages, so either add a small task or accept the gap for 0.1.0.
+**Review log:** `2026-10-07-walkpad-health-REVIEW-LOG.md` records each Codex round, what changed and what was rejected.
