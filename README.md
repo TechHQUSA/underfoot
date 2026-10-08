@@ -11,7 +11,7 @@ Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro").
 - **Saves to Health Connect** as a Walking exercise session with steps, distance and total calories.
 - **Keeps a history** with each value marked as reported by the pad or estimated.
 
-The pad reports time, distance, speed and energy, but the app has not yet found where it reports steps; the app estimates steps from distance and your height, and says so.
+Time, distance, speed, energy and steps come from the pad. Calories are the pad's own estimate.
 
 ## Install
 - GitHub releases: download the signed APK from the [latest release](https://github.com/TechHQUSA/underfoot/releases/latest) and open it on your phone (Android 9 or newer).

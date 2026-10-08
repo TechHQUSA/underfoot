@@ -26,8 +26,7 @@ A short press of play/pause on the remote pauses (`04` then `0A`, belt stopped, 
   - bytes 9-10: energy in tenths of a kcal (`0x24` = 3.6; `2ACD` shows the integer part, 3).
   - bytes 3-4: speed, but in **0.1 mph**, not km/h (raw 6 = 0.6 mph = 0.96 km/h on `2ACD`). Max seen: 40 = 4.0 mph = 6.43 km/h.
   - bytes 7-8: distance in **0.01 mile** (steps every 16.09 m), too coarse to use.
-  - bytes 11-12: u16 that counts roughly once a second while walking (107 at 112 s on 2026-10-08, frozen while paused, back to 0 after End). The console showed about 72 steps for that walk, so this is **not** confirmed to be steps and the app does not use it. Unresolved.
-  - bytes 17-18: constant within a walk, even across pause and End: `39 00` (57) on 2026-10-07, `48 00` (72) on 2026-10-08, and the console read about 72 steps. Possibly a setting or a previous-walk value; unresolved.
+  - bytes 11-12: **steps** (u16), the pad's own count (about 1 per second at 0.6 mph: 104 at 111 s). The first capture had nobody on the belt, hence the tiny values. Resets with the walk.
   - bytes 19-22: the pad's own MAC address, reversed. Byte 23: checksum, algorithm unknown, ignored.
 The app takes status, elapsed and kcal from `fff1`, and speed and distance from `2ACD` in SI units, because `fff1`'s own speed and
 distance are in miles. Whether `fff1`'s unit changes if the console is switched to km is untested; the app does not depend on it.
@@ -35,8 +34,8 @@ distance are in miles. Whether `fff1`'s unit changes if the console is switched 
 ## 2ACD Treadmill Data (measured, standard FTMS)
 Flags `0x0484`: speed (0.01 km/h), total distance (u24 metres), expended energy (total kcal u16; per-hour and per-minute fields
 read `FFFF` and `FF`, meaning not available), elapsed time (u16 s). The distance and elapsed time reset to 0 when a walk starts.
-No step count: Treadmill Data has no steps field. The app estimates steps from distance and height (marked as estimated) until
-the pad's own count is located in `fff1`.
+No step count here: Treadmill Data has no steps field. The pad's step count is in `fff1` bytes 11-12; the app falls back to an
+estimate from distance and height only when that is missing.
 
 ## Other notifications (measured, unused)
 `2ADA` sends events such as "started or resumed", "stopped or paused by the user" and "target speed changed". `2AD3` sends
@@ -64,7 +63,7 @@ buttons are active depends on the belt status (`FtmsControl.allowed`), and Setti
 
 ## Still unknown
 - How long the pad stays paused before it powers off, and whether `0A` ever ends on its own while connected.
-- Where the console's step count comes from: bytes 11-12 and 17-18 of the running frame are the candidates (see above). Needs a calibration walk: console steps at a pause, matched to the logged frame at that moment.
+- Bytes 17-18 of the running frame were `39 00` on 2026-10-07 and `48 00` on 2026-10-08 (not the elapsed time; maybe a user setting such as weight).
 - Whether the pad keeps the handshake across a disconnect.
 - The checksum.
 - Whether a pad set to km (console unit) changes the units of `fff1` speed and distance.

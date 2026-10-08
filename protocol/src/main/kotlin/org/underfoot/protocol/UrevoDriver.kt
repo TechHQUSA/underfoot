@@ -17,7 +17,7 @@ object UrevoDriver {
 
     /**
      * Frames `02 51 <status> ...`. A 6-byte frame is the once-a-second idle ping; the 25-byte running frame also carries
-     * elapsed seconds (u16 at 5) and energy in tenths of a kcal (u16 at 9). Returns null for anything else. Never throws.
+     * elapsed seconds (u16 at 5), energy in tenths of a kcal (u16 at 9) and the pad's own step count (u16 at 11). Returns null for anything else. Never throws.
      */
     fun decodeFff1(frame: ByteArray): Telemetry? {
         if (frame.size < MIN_FRAME || frame[0] != 0x02.toByte() || frame[1] != 0x51.toByte()) return null
@@ -33,7 +33,7 @@ object UrevoDriver {
         if (frame.size < TELEMETRY_FRAME) return Telemetry(status, null)
         val elapsed = u16(frame, 5)
         val kcal = (u16(frame, 9) / 10.0).takeIf { it <= MAX_KCAL }
-        return Telemetry(status, null, kcal = kcal, elapsedSec = elapsed)   // bytes 11-12 count like steps but disagree with the console (PROTOCOL.md): not used
+        return Telemetry(status, null, steps = u16(frame, 11), kcal = kcal, elapsedSec = elapsed)
     }
 
     private class Cursor(val b: ByteArray) {
