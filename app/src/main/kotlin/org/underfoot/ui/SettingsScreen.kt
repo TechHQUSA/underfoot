@@ -89,6 +89,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     var crash by remember { mutableStateOf(prefs.crashOffer) }
     var controls by remember { mutableStateOf(prefs.controlsEnabled) }
     var theme by remember { mutableStateOf(prefs.theme) }
+    var endPaused by remember { mutableIntStateOf(prefs.endPausedMin) }
     var taps by remember { mutableIntStateOf(0) }
     var hcState by remember { mutableStateOf<HcState?>(null) }
     var hcRefresh by remember { mutableIntStateOf(0) }
@@ -143,6 +144,17 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         Section(stringResource(R.string.settings_section_pad), null) {
             SwitchRow(stringResource(R.string.record_auto), stringResource(R.string.record_auto_hint), auto) { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }
             SwitchRow(stringResource(R.string.settings_controls), stringResource(R.string.settings_controls_hint), controls) { controls = it; prefs.controlsEnabled = it }
+            SwitchRow(stringResource(R.string.end_paused), stringResource(R.string.end_paused_hint), endPaused > 0 && controls, enabled = controls) {
+                endPaused = if (it) 10 else 0; prefs.endPausedMin = endPaused
+            }
+            if (endPaused > 0 && controls) {
+                val mins = listOf(5, 10, 20)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    mins.forEachIndexed { i, m ->
+                        SegmentedButton(endPaused == m, { endPaused = m; prefs.endPausedMin = m }, SegmentedButtonDefaults.itemShape(i, mins.size)) { Text(stringResource(R.string.end_paused_minutes, m)) }
+                    }
+                }
+            }
             OutlinedButton(onClick = { prefs.padAddress = null; WalkService.restart(ctx, prefs) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) {
                 Text(stringResource(R.string.forget_pad))
             }
@@ -174,13 +186,13 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     }
 }
 
-@Composable private fun SwitchRow(title: String, hint: String?, checked: Boolean, onChange: (Boolean) -> Unit) {
+@Composable private fun SwitchRow(title: String, hint: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title)
             if (hint != null) Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked, onChange)
+        Switch(checked, onChange, enabled = enabled)
     }
 }

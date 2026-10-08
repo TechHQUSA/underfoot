@@ -13,6 +13,9 @@ class AppPrefs(ctx: Context) {
     /** Show Pause and Stop buttons. Off means the app stays read-only. */
     var controlsEnabled: Boolean
         get() = p.getBoolean("controls", true); set(v) = p.edit().putBoolean("controls", v).apply()
+    /** Minutes of pause after which the app ends the walk on the pad so it can sleep; 0 = never (the default). Needs controls on. */
+    var endPausedMin: Int
+        get() = p.getInt("endPaused", 0); set(v) = p.edit().putInt("endPaused", v).apply()
     /** Display units only; everything is stored in metric. */
     var imperial: Boolean
         get() = p.getBoolean("imperial", true); set(v) = p.edit().putBoolean("imperial", v).apply()

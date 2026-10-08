@@ -7,7 +7,7 @@ Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro").
 ## What it does
 - **Records automatically.** When the pad is on, a background service connects and records while the belt runs. A walk ends when you end it on the pad (long-press play/pause) or in the app, or when the pad powers off.
 - **Shows live numbers:** speed (mph, or km/h), time, distance, calories and steps, with a speed dial.
-- **Controls the belt:** Start, Pause/Resume, a red Stop button and belt speed (drag the dial handle or tap - and +, 0.6-4.0 mph). They send only what you tap, and you can switch the controls off in Settings.
+- **Controls the belt:** Start, Pause/Resume, a red Stop button and belt speed (drag the dial handle or tap - and +, 0.6-4.0 mph). They send only what you tap, and you can switch the controls off in Settings. A pad paused from the app never goes to sleep; an optional Settings switch ends the walk on the pad after 5, 10 or 20 minutes of pause (off by default).
 - **Saves to Health Connect** as a Walking exercise session with steps, distance and total calories.
 - **Keeps a history** with each value marked as reported by the pad or estimated.
 
