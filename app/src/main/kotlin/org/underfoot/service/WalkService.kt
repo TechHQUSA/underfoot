@@ -356,7 +356,7 @@ class WalkService : Service() {
         val prof = profile
         LiveState.flow.value = last.copy(
             activeSec = p.activeSec, distanceM = p.distanceM,
-            steps = p.steps ?: Estimators.steps(p.distanceM, prof.heightCm), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), prof.weightKg),
+            steps = p.steps?.takeIf { it > 0 } ?: Estimators.steps(p.distanceM, prof.heightCm), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), prof.weightKg),
         )
     }
 
