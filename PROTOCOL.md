@@ -52,6 +52,11 @@ with indications turned off). All three worked after `00` (request control):
 Start from idle (`07` after the walk ended) also works: the pad runs its countdown and starts the belt (measured with the app's Start
 button). Not yet measured: the exact indications the pad sends back, and the `fff1` status after stop.
 
+## Pause, End and sleep (measured 2026-10-08)
+- Paused from the app (`08 02`), the pad stays in `0A` with counters frozen for at least 10 minutes; it does not sleep or time out while the app is connected.
+- A long press of play/pause on the remote is End (`2ADA` `02 01`, then `fff1` status `01`, then idle `00`). Once, the pad then went to `06` (standby, BLE still connected) within 7 s and stayed there until the remote woke it. Twice more, End left the pad in idle `00` for 10+ minutes with no `06`, so End alone does not put it to sleep. What triggers `06` is unknown.
+- Pause on the remote, then Resume (`07`) from the app after 73-100 s: the pad resumes with its counters intact.
+
 ## Connection
 Request an MTU of 247 right after connecting. The 25-byte running frame on `fff1` does not fit the default 23-byte payload, and without
 the request the pad connects and shows idle pings but never delivers a running frame (measured on a URTM059).
