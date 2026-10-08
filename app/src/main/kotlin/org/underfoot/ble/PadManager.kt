@@ -17,6 +17,7 @@ private const val TAG = "UnderfootBle"
 
 private fun u16(x: String) = UUID.fromString("0000$x-0000-1000-8000-00805f9b34fb")
 private val FFF0 = u16("fff0"); private val FFF1 = u16("fff1"); private val FFF2 = u16("fff2")
+private val FFF_EXTRA = u16("fee0"); private val FEE1 = u16("fee1"); private val FTMS_STATUS = u16("2ada")
 private val FTMS = u16("1826"); private val TREADMILL_DATA = u16("2acd"); private val CONTROL_POINT = u16("2ad9")
 
 @SuppressLint("MissingPermission") // callers verify BLUETOOTH_CONNECT before constructing
@@ -26,12 +27,16 @@ class PadManager(
     private val onFtms: (ByteArray) -> Unit,
     private val onConnection: (Boolean) -> Unit,
     private val onControlReply: (ByteArray) -> Unit,
+    /** Raw-log only: the pad's other notify streams (FTMS status events, FEE1), kept for protocol mapping. Never decoded. */
+    private val onExtra: (String, ByteArray) -> Unit = { _, _ -> },
 ) : BleManager(ctx) {
     private var ctrl: BluetoothGattCharacteristic? = null
     private var controlRequested = false           // the FTMS "request control" write goes out once per connection
     private var fff1: BluetoothGattCharacteristic? = null
     private var fff2: BluetoothGattCharacteristic? = null
     private var ftms: BluetoothGattCharacteristic? = null
+    private var ftmsStatus: BluetoothGattCharacteristic? = null
+    private var fee1: BluetoothGattCharacteristic? = null
 
     init {
         setConnectionObserver(object : ConnectionObserver {
@@ -60,6 +65,8 @@ class PadManager(
             fff1 = s.getCharacteristic(FFF1); fff2 = s.getCharacteristic(FFF2)
             ftms = gatt.getService(FTMS)?.getCharacteristic(TREADMILL_DATA)
             ctrl = gatt.getService(FTMS)?.getCharacteristic(CONTROL_POINT)
+            ftmsStatus = gatt.getService(FTMS)?.getCharacteristic(FTMS_STATUS)
+            fee1 = gatt.getService(FFF_EXTRA)?.getCharacteristic(FEE1)
             controlRequested = false
             return fff1 != null && fff2 != null
         }
@@ -83,13 +90,19 @@ class PadManager(
                     enableIndications(c).fail { _, s -> Log.w(TAG, "control point indications failed: $s") }.enqueue()
                 }
             }
+            listOf("2ada" to ftmsStatus, "fee1" to fee1).forEach { (label, c) ->
+                if (c != null && c.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) {
+                    setNotificationCallback(c).with { _, d -> d.value?.let { onExtra(label, it) } }
+                    enableNotifications(c).fail { _, s -> Log.w(TAG, "$label notifications failed: $s") }.enqueue()
+                }
+            }
             UrevoDriver.handshakeFrames.forEach { frame ->
                 writeCharacteristic(fff2, frame, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
                     .fail { _, s -> Log.w(TAG, "handshake write failed: $s") }.enqueue()
             }
         }
 
-        override fun onServicesInvalidated() { fff1 = null; fff2 = null; ftms = null; ctrl = null; controlRequested = false }
+        override fun onServicesInvalidated() { fff1 = null; fff2 = null; ftms = null; ctrl = null; ftmsStatus = null; fee1 = null; controlRequested = false }
     }
 
     /** Sends one command through the FTMS control point, requesting control first if this connection has not yet. */

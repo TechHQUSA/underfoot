@@ -199,7 +199,8 @@ class WalkService : Service() {
         fun current(f: () -> Unit) = main.post { if (gen == managerGen) f() }
         return PadManager(this,
             { b -> current { handleFff1(b) } }, { b -> current { handleFtms(b) } }, { c -> current { handleConnection(c) } },
-            { b -> current { handleControlReply(b) } })
+            { b -> current { handleControlReply(b) } },
+            { label, b -> current { if (prefs.rawLog) log.append(label, b) } })
     }
 
     /**
@@ -222,6 +223,7 @@ class WalkService : Service() {
         if (!gate.accept(cmd, SystemClock.elapsedRealtime())) return
         val m = manager ?: return
         pendingCmd = cmd; pendingBefore = last.status
+        if (prefs.rawLog) log.append("tx:${cmd.name}", FtmsControl.frame(cmd))
         val seq = ++cmdSeq
         try {
             m.send(cmd) { written -> main.post { if (!written && pendingCmd == cmd && seq == cmdSeq) finishCommand(CommandResult.FAILED) } }
@@ -262,6 +264,7 @@ class WalkService : Service() {
 
     private fun handleControlReply(bytes: ByteArray) {
         if (destroyed) return
+        if (prefs.rawLog) log.append("2ad9", bytes)
         val r = FtmsControl.parseReply(bytes) ?: return
         if (r.opcode == FtmsControl.OPCODE_SET_SPEED && speedPending) { speedPending = false; if (!r.ok) flash(CommandResult.FAILED); return }
         val cmd = pendingCmd ?: return
