@@ -2,7 +2,7 @@
 
 Open-source Android app for UREVO walking pads. It records your walks over Bluetooth LE, saves them to Health Connect, and lets you start, pause, resume and stop the belt. No account, no analytics.
 
-Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro"). Releases are not published yet.
+Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro").
 
 ## What it does
 - **Records automatically.** When the pad is on, a background service connects and records while the belt runs. A walk ends when you stop, or after a minute of pause.
@@ -14,7 +14,7 @@ Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro"). Releases are no
 Steps and some calories are estimates. The pad reports time, distance, speed and energy, but not steps; the app estimates steps from distance and your height, and says so.
 
 ## Install
-- GitHub releases: download the signed APK (not published yet).
+- GitHub releases: download the signed APK from the [latest release](https://github.com/TechHQUSA/underfoot/releases/latest) and open it on your phone (Android 9 or newer).
 - F-Droid: submission pending.
 
 ## First run
