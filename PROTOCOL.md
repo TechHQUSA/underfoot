@@ -26,7 +26,7 @@ A short press of play/pause on the remote pauses (`04` then `0A`, belt stopped, 
   - bytes 9-10: energy in tenths of a kcal (`0x24` = 3.6; `2ACD` shows the integer part, 3).
   - bytes 3-4: speed, but in **0.1 mph**, not km/h (raw 6 = 0.6 mph = 0.96 km/h on `2ACD`). Max seen: 40 = 4.0 mph = 6.43 km/h.
   - bytes 7-8: distance in **0.01 mile** (steps every 16.09 m), too coarse to use.
-  - bytes 11-12: **steps** (u16), the pad's own count (about 1 per second at 0.6 mph: 104 at 111 s). The first capture had nobody on the belt, hence the tiny values. Resets with the walk.
+  - bytes 11-12: **steps** (u16), the pad's own count (about 1 per second at 0.6 mph: 104 at 111 s). Checked against the console on 2026-10-08: it read 64 steps at about 1:07 into a walk at 0.8 mph, where the counter read 65 at 67 s in the logged walk, and about 72 during a pause where the counter read 73-76. The console hides the final value behind the End countdown. The first capture had nobody on the belt, hence the tiny values. Resets with the walk.
   - bytes 19-22: the pad's own MAC address, reversed. Byte 23: checksum, algorithm unknown, ignored.
 The app takes status, elapsed and kcal from `fff1`, and speed and distance from `2ACD` in SI units, because `fff1`'s own speed and
 distance are in miles. Whether `fff1`'s unit changes if the console is switched to km is untested; the app does not depend on it.
@@ -63,7 +63,7 @@ buttons are active depends on the belt status (`FtmsControl.allowed`), and Setti
 
 ## Still unknown
 - How long the pad stays paused before it powers off, and whether `0A` ever ends on its own while connected.
-- Bytes 17-18 of the running frame were `39 00` on 2026-10-07 and `48 00` on 2026-10-08 (not the elapsed time; maybe a user setting such as weight).
+- Bytes 17-18 of the running frame were `39 00` on 2026-10-07 and `48 00` on 2026-10-08 (not the elapsed time; not the owner's weight, which is about 77 kg; meaning unknown).
 - Whether the pad keeps the handshake across a disconnect.
 - The checksum.
 - Whether a pad set to km (console unit) changes the units of `fff1` speed and distance.
