@@ -26,6 +26,8 @@ JDK 17 and the Android SDK (platform 36) are required.
 - Bluetooth off, or the Bluetooth permission revoked: Today shows the matching message.
 - Health Connect permission denied: sessions queue and sync after you grant it.
 - In the Health Connect app, one walk shows as one Walking session with steps, distance and calories. Re-running sync (toggle the permission off and on, reopen the app) creates no duplicates.
+- Tap "Forget paired pad" in Settings while connected: the connection drops, the app rescans, and the pad pairs again with a single session per walk.
+- Tap the recording notification: the app opens.
 - Force a crash in a debug build, relaunch: the dialog appears, Send opens the share sheet, and the prompt does not repeat.
 
 ## Releases
