@@ -22,7 +22,7 @@ A free, open-source Android app for a UREVO walking pad (BLE name `URTM059`, "2D
 | Topic | Decision |
 |---|---|
 | Scope (changed) | Tracking, plus Start/Pause/Resume/Stop control through the standard FTMS Control Point. The original spec was track-only; the owner added control after measuring all commands on the pad. |
-| Recording | Auto: a foreground service connects when the pad is on and records while the belt runs. A pause of 60 s ends the walk. |
+| Recording | Auto: a foreground service connects when the pad is on and records while the belt runs. The walk ends on the pad's End (long press), on a stop, or when the pad powers off; a 30-minute pause is a backstop. |
 | Profile | Weight and height entered in Settings, stored on device. No Health Connect read permissions. |
 | Units (added) | Imperial by default (mph, miles, pounds, inches), with a Settings switch. Everything is stored in metric. |
 | Structure | Two Gradle modules: `:protocol` (pure Kotlin) and `:app`. |
@@ -39,7 +39,7 @@ A free, open-source Android app for a UREVO walking pad (BLE name `URTM059`, "2D
 - `fff1` sends status (`00` idle, `02` countdown, `03` running, `04` pausing, `0A` paused), elapsed seconds and energy in tenths of a kcal. Its speed and distance fields are in miles, so they are not decoded.
 - Standard FTMS Treadmill Data (`2ACD`) supplies speed (km/h), distance (m), energy and elapsed time in SI units. The app merges it with `fff1`.
 - The pad has no step count. Steps are estimated.
-- The console's Stop button only pauses; the pad stays PAUSED, so the app ends a walk after 60 s of pause.
+- A short press on the console pauses (the pad stays PAUSED, counters frozen); a long press is End (status STOPPED). The pad powers off after a long pause.
 - Control Point (`2AD9`): `00` request control (once per connection), `07` start or resume, `08 02` pause, `08 01` stop (ends the workout, console shows END). All measured with nobody on the belt, then through the app.
 
 Unknowns that remain: the exact control-point indications, `fff1` status after stop, the meaning of `fff1` bytes 11-12 and the checksum, and whether the units change when the console is set to km.
@@ -49,7 +49,7 @@ Unknowns that remain: the exact control-point indications, `fff1` status after s
 ### 4.1 `:protocol` (pure Kotlin/JVM, no Android imports)
 - `UrevoDriver`: `decodeFff1`, `decodeFtms`, `handshakeFrames`. Bounds-checked; never throws.
 - `TelemetryMerger`: combines the `fff1` status, elapsed and energy with the FTMS speed and distance.
-- `SessionTracker`: state machine with a monotonic clock supplied by the caller; ends a walk on stop or idle, after a 60 s disconnect, or after a 60 s pause; ignores gaps over 5 s; discards runs under 10 s; stores cumulative pad counters as the change since the start frame.
+- `SessionTracker`: state machine with a monotonic clock supplied by the caller; ends a walk on stop or idle, after a 60 s disconnect, or after a 30 min pause; ignores gaps over 5 s; discards runs under 10 s; stores cumulative pad counters as the change since the start frame.
 - `FtmsControl`, `PadCommand`, `CommandGate`: the command bytes, reply parsing, which buttons are allowed for a belt status, how a command is confirmed from a status change, and a rate limit for Pause, Resume and Start (Stop is never held back).
 - `Estimators` and `finalize`: steps and calories for values the pad does not report, tagged as estimated.
 - Dependency rule: `:app` depends on `:protocol`, never the reverse.
@@ -64,7 +64,7 @@ Unknowns that remain: the exact control-point indications, `fff1` status after s
 
 ## 5. Data flow
 1. The service scans for a device named `URTM0xx` (or connects to the stored address), requests a larger MTU, enables notifications on `fff1` and `2acd` and indications on `2ad9`, and writes the handshake.
-2. Each `fff1` frame is merged with the latest FTMS reading and fed to the tracker. A running belt starts a session; stop, idle, a disconnect or a pause of 60 s ends it.
+2. Each `fff1` frame is merged with the latest FTMS reading and fed to the tracker. A running belt starts a session; stop, idle, a disconnect of 60 s or a pause of 30 min ends it.
 3. A finished session is saved to Room first, then synced to Health Connect as `ExerciseSession` plus `Steps`, `Distance` and `TotalCaloriesBurned`. Sync is idempotent (stable client record ids) and a session that Health Connect permanently rejects is skipped so it cannot block later walks.
 4. A button tap goes through `WalkService.command`, which checks the allowed buttons for the belt status, applies the rate limit, requests control once, writes the command, and confirms it from the pad's reply or a matching status change. No reply and no change shows "The pad did not respond".
 

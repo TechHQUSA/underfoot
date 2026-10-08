@@ -1,14 +1,18 @@
 package org.underfoot.protocol
 
-data class Progress(val activeSec: Long, val distanceM: Double)
+data class Progress(val activeSec: Long, val distanceM: Double, val steps: Int? = null)
 
 /** Pure state machine. Not thread-safe: the caller must serialize all calls on one thread. Times are milliseconds on a monotonic clock the caller supplies (the service uses `SystemClock.elapsedRealtime()`); the caller converts summary times to epoch for storage. */
 class SessionTracker(
     private val gapMs: Long = 5_000,
     private val disconnectMs: Long = 60_000,
     private val minActiveSec: Long = 10,
-    /** URTM059 stays PAUSED after the console Stop button, so a pause this long ends the walk (dated to when the pause began). */
-    private val pauseEndMs: Long = 60_000,
+    /**
+     * A pause this long ends the walk (dated to when the pause began). Long-pressing play/pause on the URTM059 ("End") is reported as
+     * STOPPED, so this is only a backstop for a pad left paused and connected; the pad powers itself off after a while, which ends the
+     * walk through the disconnect timeout instead.
+     */
+    private val pauseEndMs: Long = 30 * 60_000,
     private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     private data class Totals(val dist: Double? = null, val steps: Int? = null, val kcal: Double? = null)
@@ -28,7 +32,10 @@ class SessionTracker(
 
     val isActive: Boolean get() = startMs != null
 
-    fun progress() = Progress(activeMs / 1000, integratedM)
+    fun progress() = Progress(
+        activeMs / 1000, integratedM,
+        if (startMs != null) delta(base.steps?.toDouble(), latest.steps?.toDouble())?.toInt() else null,
+    )
 
     fun onTelemetry(t: Telemetry, nowMs: Long): SessionSummary? {
         val expired = tick(nowMs)            // an expired disconnect ends the old session before this frame is considered

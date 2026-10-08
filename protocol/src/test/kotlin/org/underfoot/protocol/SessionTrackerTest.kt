@@ -62,8 +62,7 @@ class SessionTrackerTest {
     }
 
     @Test fun pauseOfAMinuteEndsTheWalkWhereThePauseBegan() {
-        // This pad stays PAUSED after the console Stop button (seen on URTM059), so a long pause has to end the walk.
-        val t = SessionTracker()
+        val t = SessionTracker(pauseEndMs = 60_000)
         t.runFor(0, 30)
         for (s in 31..90) assertNull(t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), s * 1000L))
         val out = t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), 91_000)!!
@@ -73,7 +72,7 @@ class SessionTrackerTest {
     }
 
     @Test fun theTickerEndsAPausedWalkEvenIfNoFramesArrive() {
-        val t = SessionTracker()
+        val t = SessionTracker(pauseEndMs = 60_000)
         t.runFor(0, 30)
         t.onTelemetry(Telemetry(BeltStatus.PAUSING, null), 31_000)
         assertNull(t.tick(90_999))
@@ -88,6 +87,25 @@ class SessionTrackerTest {
         assertNull(t.tick(200_000))                                                // pause timer was cleared by RUNNING
         val out = t.onTelemetry(st(BeltStatus.STOPPED), 81_000)!!
         assertEquals(30L + 19L, out.activeSec)
+    }
+
+    @Test fun aFiveMinutePauseKeepsTheSameWalkByDefault() {
+        // Pause on the remote, resume from the app minutes later: the pad keeps its counters, so the walk must continue.
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        for (s in 31..330) assertNull(t.onTelemetry(Telemetry(BeltStatus.PAUSED, null), s * 1000L))
+        t.onTelemetry(Telemetry(BeltStatus.STARTING, null), 331_000)
+        t.runFor(334, 360)
+        assertTrue(t.isActive)
+        assertEquals(30L + 26L, t.onTelemetry(st(BeltStatus.STOPPED), 361_000)!!.activeSec)
+    }
+
+    @Test fun padStepsAreReportedLiveAndAsTheChangeSinceTheStart() {
+        val t = SessionTracker()
+        t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, steps = 100), 0)
+        for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, steps = 100 + s * 2), s * 1000L)
+        assertEquals(40, t.progress().steps)
+        assertEquals(40, t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!.deviceSteps)
     }
 
     @Test fun theCountdownAfterAPauseAlsoClearsThePauseTimer() {
