@@ -12,7 +12,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
 
         Scaffold(bottomBar = {
             NavigationBar {
-                NavigationBarItem(tab == 0, { tab = 0; rawLog = false }, { Icon(Icons.Filled.DirectionsWalk, null) }, label = { Text(stringResource(R.string.tab_today)) })
+                NavigationBarItem(tab == 0, { tab = 0; rawLog = false }, { Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null) }, label = { Text(stringResource(R.string.tab_today)) })
                 NavigationBarItem(tab == 1, { tab = 1; rawLog = false }, { Icon(Icons.Filled.History, null) }, label = { Text(stringResource(R.string.tab_history)) })
                 NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Filled.Settings, null) }, label = { Text(stringResource(R.string.tab_settings)) })
             }

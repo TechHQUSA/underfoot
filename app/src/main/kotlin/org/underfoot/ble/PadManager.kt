@@ -53,6 +53,7 @@ class PadManager(
         (if (auto) req else req.timeout(15_000)).enqueue()
     }
 
+    @Suppress("OVERRIDE_DEPRECATION") // Nordic's replacement API needs a larger rewrite; the callback itself works
     override fun getGattCallback(): BleManagerGattCallback = object : BleManagerGattCallback() {
         override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
             val s = gatt.getService(FFF0) ?: return false

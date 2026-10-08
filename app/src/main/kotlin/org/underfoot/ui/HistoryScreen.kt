@@ -17,7 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.Card
@@ -77,7 +77,7 @@ fun HistoryScreen(all: List<SessionEntity>, imperial: Boolean) {
 
 @Composable private fun EmptyHistory() {
     Column(Modifier.fillMaxWidth().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(Icons.Filled.DirectionsWalk, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
+        Icon(Icons.AutoMirrored.Filled.DirectionsWalk, null, Modifier.size(56.dp), tint = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.history_empty_title), fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
@@ -109,7 +109,7 @@ fun HistoryScreen(all: List<SessionEntity>, imperial: Boolean) {
             Spacer(Modifier.height(12.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 Mini(Icons.Filled.Straighten, fmtDistance(s.distanceM, imperial) + " " + stringResource(if (imperial) R.string.unit_mi else R.string.unit_km))
-                Mini(Icons.Filled.DirectionsWalk, "%,d".format(s.steps))
+                Mini(Icons.AutoMirrored.Filled.DirectionsWalk, "%,d".format(s.steps))
                 Mini(Icons.Filled.LocalFireDepartment, "%.0f".format(s.kcal) + " " + stringResource(R.string.stat_kcal))
             }
             if (est > 0 || !s.synced) {

@@ -112,8 +112,8 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
                 OutlinedTextField(h, { h = it }, Modifier.weight(1f), label = { Text(stringResource(if (imperial) R.string.label_height_in else R.string.label_height_cm)) }, keyboardOptions = num, singleLine = true)
             }
             Button(onClick = {
-                val wv = w.toDoubleOrNull() ?: 0.0
-                val hv = h.toDoubleOrNull() ?: 0.0
+                val wv = w.replace(',', '.').toDoubleOrNull() ?: 0.0
+                val hv = h.replace(',', '.').toDoubleOrNull() ?: 0.0
                 onSave(if (imperial) lbToKg(wv) else wv, if (imperial) inToCm(hv) else hv)
             }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.save_profile)) }
         }
@@ -143,7 +143,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         Section(stringResource(R.string.settings_section_pad), null) {
             SwitchRow(stringResource(R.string.record_auto), stringResource(R.string.record_auto_hint), auto) { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }
             SwitchRow(stringResource(R.string.settings_controls), stringResource(R.string.settings_controls_hint), controls) { controls = it; prefs.controlsEnabled = it }
-            OutlinedButton(onClick = { prefs.padAddress = null; WalkService.sync(ctx, prefs) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) {
+            OutlinedButton(onClick = { prefs.padAddress = null; WalkService.restart(ctx, prefs) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) {
                 Text(stringResource(R.string.forget_pad))
             }
         }

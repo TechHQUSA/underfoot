@@ -81,6 +81,12 @@ class WalkService : Service() {
             ctx.startService(Intent(ctx, WalkService::class.java).setAction(ACTION_COMMAND).putExtra(EXTRA_COMMAND, cmd.name))
         }
 
+        /** Restarts the service so it drops the current connection and looks for a pad again (used after Forget pad). */
+        fun restart(ctx: Context, prefs: AppPrefs) {
+            ctx.stopService(Intent(ctx, WalkService::class.java))
+            sync(ctx, prefs)
+        }
+
         /** Single entry point for the UI, the boot receiver and the auto-record toggle. */
         fun sync(ctx: Context, prefs: AppPrefs) {
             val i = Intent(ctx, WalkService::class.java)
@@ -166,9 +172,12 @@ class WalkService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!btGranted(this)) { LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY }
-        try { startInForeground() } catch (e: SecurityException) { LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY }
-        prefs = AppPrefs(this)
-        log = FrameLog(File(filesDir, "raw"))
+        // SecurityException: missing permission. IllegalStateException: Android 12+ refuses a foreground start from the background.
+        try { startInForeground() } catch (e: RuntimeException) {
+            if (e !is SecurityException && e !is IllegalStateException) throw e
+            LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY
+        }
+        if (!::prefs.isInitialized) { prefs = AppPrefs(this); log = FrameLog(File(filesDir, "raw")) }
         if (manager == null) {
             ContextCompat.registerReceiver(this, btState, android.content.IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
             profileJob?.cancel()
@@ -308,14 +317,16 @@ class WalkService : Service() {
         if (scanning) return
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(UUID.fromString("00001826-0000-1000-8000-00805f9b34fb"))).build()
         val scanner = adapter.bluetoothLeScanner ?: run { handleScanFailed(); return }
-        scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCb)
-        scanning = true
+        try {
+            scanner.startScan(listOf(filter), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCb)
+            scanning = true
+        } catch (e: RuntimeException) { Log.w("UnderfootBle", "startScan failed", e); handleScanFailed() }
     }
 
     private fun stopScan() {
         if (!scanning) return
-        (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.bluetoothLeScanner?.stopScan(scanCb)
         scanning = false
+        runCatching { (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.bluetoothLeScanner?.stopScan(scanCb) }
     }
 
     private fun persist(s: SessionSummary) { store.enqueue(s); flush() }
@@ -352,7 +363,9 @@ class WalkService : Service() {
         val n = NotificationCompat.Builder(this, "walk")
             .setSmallIcon(android.R.drawable.ic_menu_directions)
             .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.notif_text)).setOngoing(true).build()
+            .setContentText(getString(R.string.notif_text)).setOngoing(true)
+            .setContentIntent(android.app.PendingIntent.getActivity(this, 0, Intent(this, org.underfoot.MainActivity::class.java), android.app.PendingIntent.FLAG_IMMUTABLE))
+            .build()
         ServiceCompat.startForeground(this, 1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
     }
 

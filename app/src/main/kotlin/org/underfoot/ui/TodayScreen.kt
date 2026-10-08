@@ -38,7 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.DirectionsWalk
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -114,7 +114,7 @@ fun TodayScreen(
                 StatDivider()
                 StatCell(Icons.Filled.LocalFireDepartment, "%.0f".format(live.kcal), stringResource(R.string.stat_kcal), Modifier.weight(1f))
                 StatDivider()
-                StatCell(Icons.Filled.DirectionsWalk, "%,d".format(live.steps), stringResource(R.string.stat_steps).uppercase(), Modifier.weight(1f))
+                StatCell(Icons.AutoMirrored.Filled.DirectionsWalk, "%,d".format(live.steps), stringResource(R.string.stat_steps).uppercase(), Modifier.weight(1f))
             }
         }
         if (controlsEnabled) item { Controls(live, allowed, onCommand) }

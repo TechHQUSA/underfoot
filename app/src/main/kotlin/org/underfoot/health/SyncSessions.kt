@@ -13,7 +13,9 @@ enum class SyncResult { Done, Blocked, Retry }
 
 class SyncSessions(private val dao: SessionDao, private val gw: HealthGateway) {
     suspend fun run(): SyncResult {
-        if (!gw.hasPermissions()) return SyncResult.Blocked
+        try { if (!gw.hasPermissions()) return SyncResult.Blocked }
+        catch (e: CancellationException) { throw e }
+        catch (e: Exception) { return SyncResult.Retry }
         for (s in dao.unsynced()) {
             try { gw.write(s); dao.markSynced(s.id) }
             catch (e: CancellationException) { throw e }
