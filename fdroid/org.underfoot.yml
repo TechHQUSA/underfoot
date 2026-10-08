@@ -1,14 +1,14 @@
 # Draft F-Droid build recipe. The owner submits this to https://gitlab.com/fdroid/fdroiddata as metadata/org.underfoot.yml.
-# Replace REPLACE_WITH_REPO_URL with the public repository URL before submitting.
+# Submit this to https://gitlab.com/fdroid/fdroiddata as metadata/org.underfoot.yml once v0.1.0 is tagged.
 Categories:
   - Sports & Health
 License: GPL-3.0-or-later
-SourceCode: REPLACE_WITH_REPO_URL
-IssueTracker: REPLACE_WITH_REPO_URL/issues
+SourceCode: https://github.com/TechHQUSA/underfoot
+IssueTracker: https://github.com/TechHQUSA/underfoot/issues
 
 AutoName: Underfoot
 RepoType: git
-Repo: REPLACE_WITH_REPO_URL.git
+Repo: https://github.com/TechHQUSA/underfoot.git
 
 Builds:
   - versionName: 0.1.0
