@@ -28,7 +28,6 @@ JDK 17 and the Android SDK (platform 36) are required.
 - In the Health Connect app, one walk shows as one Walking session with steps, distance and calories. Re-running sync (toggle the permission off and on, reopen the app) creates no duplicates.
 - Tap "Forget paired pad" in Settings while connected: the connection drops, the app rescans, and the pad pairs again with a single session per walk.
 - Tap the recording notification: the app opens.
-- Settings > "End a paused walk" on (5 min): pause from the app and wait; after 5 minutes the pad shows End, the walk is saved once, and the pad goes to sleep a while later. With it off, nothing is sent and the walk stays paused.
 - Force a crash in a debug build, relaunch: the dialog appears, Send opens the share sheet, and the prompt does not repeat.
 
 ## Releases

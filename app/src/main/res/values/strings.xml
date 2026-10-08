@@ -28,9 +28,6 @@
     <string name="stat_energy">Energy</string>
     <string name="cmd_not_confirmed">The pad did not respond.</string>
     <string name="cmd_failed">The pad refused the command.</string>
-    <string name="end_paused">End a paused walk</string>
-    <string name="end_paused_hint">The pad stays awake while paused from the app. When on, the app ends the walk on the pad after the chosen time so it can sleep. Needs pad controls.</string>
-    <string name="end_paused_minutes">%1$d min</string>
     <string name="settings_controls">Pad controls</string>
     <string name="history_week">Last 7 days</string>
     <string name="history_empty_title">No walks yet</string>

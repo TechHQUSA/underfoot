@@ -121,8 +121,6 @@ class WalkService : Service() {
     private var destroyed = false                  // stale posts from the old BLE manager must not revive a stopped service
     private var tickCount = 0
     private var last = Live()
-    private var pausedSinceMs: Long? = null        // when the belt status became PAUSED/PAUSING; drives the opt-in auto-End
-    private var autoEndSent = false
     private val store by lazy { AppDb.get(this).let { SessionStore(it.sessions(), it.profile()) } }
     @Volatile private var profile = Profile.DEFAULT    // live display only; saved walks read the stored profile at save time
 
@@ -130,7 +128,6 @@ class WalkService : Service() {
         override fun run() {
             if (destroyed) return
             tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
-            checkAutoEnd(SystemClock.elapsedRealtime())
             if (++tickCount % 30 == 0 && store.hasPending) flush()
             publish(); main.postDelayed(this, 1000)
         }
@@ -252,15 +249,6 @@ class WalkService : Service() {
         try {
             m.sendFrame(FtmsControl.setSpeedFrame(target), "SET_SPEED") { written -> main.post { if (!written) { speedPending = false; flash(CommandResult.FAILED) } } }
         } catch (e: RuntimeException) { speedPending = false; recoverFromDeadGatt(e) }
-    }
-
-    /** Opt-in: a pad paused from the app never sleeps, so after the chosen time the walk is ended on the pad (the same End as a long press). */
-    private fun checkAutoEnd(now: Long) {
-        val paused = last.connected && (last.status == BeltStatus.PAUSED || last.status == BeltStatus.PAUSING)
-        if (!paused) { pausedSinceMs = null; autoEndSent = false; return }
-        val since = pausedSinceMs ?: now.also { pausedSinceMs = it }
-        val minutes = prefs.endPausedMin
-        if (minutes > 0 && !autoEndSent && now - since >= minutes * 60_000L) { autoEndSent = true; runCommand(PadCommand.STOP) }
     }
 
     private fun finishCommand(result: CommandResult) { pendingCmd = null; flash(result) }
