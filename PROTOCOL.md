@@ -53,7 +53,7 @@ Start from idle (`07` after the walk ended) also works: the pad runs its countdo
 button). Not yet measured: the exact indications the pad sends back, and the `fff1` status after stop.
 
 ## Pause, End and sleep (measured 2026-10-08)
-- Paused from the app (`08 02`), the pad stays in `0A` with counters frozen for at least 10 minutes; it does not sleep or time out while the app is connected.
+- Paused from the app (`08 02`) or from the remote (`2ADA` `02 02` with no preceding command), the pad stays in `0A` with counters frozen for 10+ minutes (the longest remote pause logged was 603 s); it does not sleep or time out while the app is connected, whoever paused it.
 - A long press of play/pause on the remote is End (`2ADA` `02 01`, then `fff1` status `01`, then idle `00`). Once, the pad then went to `06` (standby, BLE still connected) within 7 s and stayed there until the remote woke it. Twice more, End left the pad in idle `00` for 10+ minutes with no `06`, so End alone does not put it to sleep. What triggers `06` is unknown.
 - Pause on the remote, then Resume (`07`) from the app after 73-100 s: the pad resumes with its counters intact.
 
