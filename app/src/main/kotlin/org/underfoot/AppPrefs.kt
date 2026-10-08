@@ -22,6 +22,9 @@ class AppPrefs(ctx: Context) {
     /** "dark" (the default), "light" or "system". */
     var theme: String
         get() = p.getString("theme", "dark") ?: "dark"; set(v) = p.edit().putString("theme", v).apply()
+    /** Minutes paused or idle before the app lets go of the pad so it can power itself off; 0 = never. */
+    var sleepMin: Int
+        get() = p.getInt("sleepmin", 0); set(v) = p.edit().putInt("sleepmin", v).apply()
     /** MAC of the paired pad; connect directly when known, scan only when null. */
     var padAddress: String?
         get() = p.getString("pad", null); set(v) = p.edit().putString("pad", v).apply()

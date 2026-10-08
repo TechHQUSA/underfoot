@@ -88,6 +88,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     var auto by remember { mutableStateOf(prefs.autoRecord) }
     var crash by remember { mutableStateOf(prefs.crashOffer) }
     var controls by remember { mutableStateOf(prefs.controlsEnabled) }
+    var sleepMin by remember { mutableIntStateOf(prefs.sleepMin) }
     var theme by remember { mutableStateOf(prefs.theme) }
     var taps by remember { mutableIntStateOf(0) }
     var hcState by remember { mutableStateOf<HcState?>(null) }
@@ -143,6 +144,16 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         Section(stringResource(R.string.settings_section_pad), null) {
             SwitchRow(stringResource(R.string.record_auto), stringResource(R.string.record_auto_hint), auto) { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }
             SwitchRow(stringResource(R.string.settings_controls), stringResource(R.string.settings_controls_hint), controls) { controls = it; prefs.controlsEnabled = it }
+            Text(stringResource(R.string.sleep_title))
+            Text(stringResource(R.string.sleep_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val sleepOpts = listOf(0, 5, 10, 20)
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                sleepOpts.forEachIndexed { i, m ->
+                    SegmentedButton(sleepMin == m, { sleepMin = m; prefs.sleepMin = m }, SegmentedButtonDefaults.itemShape(i, sleepOpts.size)) {
+                        Text(if (m == 0) stringResource(R.string.sleep_off) else stringResource(R.string.sleep_min, m))
+                    }
+                }
+            }
             OutlinedButton(onClick = { prefs.padAddress = null; WalkService.restart(ctx, prefs) }, Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(24.dp)) {
                 Text(stringResource(R.string.forget_pad))
             }

@@ -28,6 +28,7 @@ class SessionTracker(
     private var latest = Totals()
     private var disconnectedAt: Long? = null
     private var pausedSince: Long? = null
+    private var released = false
     private var unobserved = false                 // a link loss since the last frame: the interval across it is not walking time
 
     val isActive: Boolean get() = startMs != null
@@ -39,7 +40,7 @@ class SessionTracker(
 
     fun onTelemetry(t: Telemetry, nowMs: Long): SessionSummary? {
         val expired = tick(nowMs)            // an expired disconnect ends the old session before this frame is considered
-        disconnectedAt = null
+        disconnectedAt = null; released = false
         val gap = unobserved; unobserved = false
         val open = startMs != null
         if (open) {
@@ -67,9 +68,13 @@ class SessionTracker(
     }
 
     fun onDisconnect(nowMs: Long) {
+        if (released) return                       // the planned disconnect that follows onRelease
         if (startMs != null) unobserved = true
         if (startMs != null && disconnectedAt == null) disconnectedAt = nowMs
     }
+
+    /** The app drops the link on purpose so the pad can sleep: unlike a lost link this does not start the disconnect timeout. */
+    fun onRelease() { if (startMs != null) { unobserved = true; released = true } }
 
     fun tick(nowMs: Long): SessionSummary? {
         val d = disconnectedAt
@@ -101,7 +106,7 @@ class SessionTracker(
             delta(base.kcal, latest.kcal),
             wallStartMs,
         )
-        startMs = null; disconnectedAt = null; unobserved = false; pausedSince = null; activeMs = 0; integratedM = 0.0
+        startMs = null; disconnectedAt = null; released = false; unobserved = false; pausedSince = null; activeMs = 0; integratedM = 0.0
         base = Totals(); latest = Totals()
         return if (summary.activeSec >= minActiveSec) summary else null
     }

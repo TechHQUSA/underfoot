@@ -230,4 +230,13 @@ class SessionTrackerTest {
         assertNull(t.tick(1_000_000))
         assertTrue(t.isActive)
     }
+
+    @Test fun releasingThePadForSleepKeepsAPausedWalkOpen() {
+        val t = SessionTracker()
+        t.runFor(0, 30)
+        for (s in 31..40) t.onTelemetry(st(BeltStatus.PAUSED), s * 1000L)
+        t.onRelease(); t.onDisconnect(41_000)        // the app lets go; the disconnect that follows must not end the walk in 60 s
+        assertNull(t.tick(41_000 + 10 * 60_000))
+        assertTrue(t.isActive)
+    }
 }
