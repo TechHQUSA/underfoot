@@ -1,0 +1,3 @@
+Steps now come from the pad, matching its screen.
+A walk now survives a long pause: pause on the remote, resume in the app.
+Tapping the notification opens the app; Forget pad works while connected.
