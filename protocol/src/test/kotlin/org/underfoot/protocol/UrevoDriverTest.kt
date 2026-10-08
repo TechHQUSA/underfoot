@@ -21,7 +21,7 @@ class UrevoDriverTest {
     private val run63s = hex("02-51-03-28-00-3F-00-04-00-24-00-04-00-00-00-00-00-39-00-6B-F0-5D-50-72-03")
     private val pausing = hex("02-51-04-28-00-4C-00-05-00-2E-00-04-00-00-00-00-00-39-00-6B-F0-5D-50-1B-03")
     private val paused = hex("02-51-0A-00-00-4C-00-05-00-2E-00-08-00-00-00-00-00-39-00-6B-F0-5D-50-79-03")
-    // REAL, 2026-10-08 walk at 0.6 mph: step count rides in bytes 11-12; long-press "End" ends in status 01, then the pad idles and shows 06
+    // REAL, 2026-10-08 walk at 0.6 mph: bytes 11-12 count ~1/s but the console read ~72 where they said 107; long-press "End" ends in status 01, then the pad idles and shows 06
     private val run111s = hex("02-51-03-06-00-6F-00-01-00-20-00-68-00-00-00-00-00-48-00-6B-F0-5D-50-F8-03")
     private val ended = hex("02-51-01-00-00-70-00-01-00-20-00-6B-00-00-00-00-00-48-00-6B-F0-5D-50-C4-03")
     private val shuttingDown = hex("02-51-06-01-02-03")
@@ -51,7 +51,7 @@ class UrevoDriverTest {
         assertEquals(BeltStatus.RUNNING, t.status)
         assertEquals(63, t.elapsedSec)
         assertEquals(3.6, t.kcal!!, 1e-9)
-        assertEquals(4, t.steps)
+        assertNull(t.steps)             // bytes 11-12 are not trusted as steps yet
         assertNull(t.speedKmh)          // speed rides on FTMS in SI units; fff1's own unit is 0.1 mph
         assertNull(t.distanceM)
     }
@@ -67,10 +67,9 @@ class UrevoDriverTest {
         assertEquals(BeltStatus.PAUSED, p.status); assertEquals(76, p.elapsedSec); assertEquals(4.6, p.kcal!!, 1e-9)
     }
 
-    @Test fun padStepCountIsDecodedFromBytes11And12() {
+    @Test fun laterRunningFrameDecodes() {
         val t = UrevoDriver.decodeFff1(run111s)!!
-        assertEquals(111, t.elapsedSec); assertEquals(104, t.steps); assertEquals(3.2, t.kcal!!, 1e-9)
-        assertEquals(107, UrevoDriver.decodeFff1(ended)!!.steps)
+        assertEquals(111, t.elapsedSec); assertEquals(3.2, t.kcal!!, 1e-9); assertNull(t.steps)
     }
 
     @Test fun endedAndShuttingDownFrames() {
