@@ -238,7 +238,7 @@ class SessionTrackerTest {
         val t = SessionTracker()
         t.runFor(0, 30)
         for (s in 31..40) t.onTelemetry(st(BeltStatus.PAUSED), s * 1000L)
-        t.onRelease(41_000, 15 * MIN); t.onDisconnect(41_000)   // the planned disconnect must not end the walk in 60 s
+        t.onRelease(); t.onDisconnect(41_000)   // the planned disconnect must not end the walk in 60 s
         assertNull(t.tick(41_000 + 10 * MIN))
         assertTrue(t.isActive)
     }
@@ -247,7 +247,7 @@ class SessionTrackerTest {
         val t = SessionTracker()
         for (s in 0..60) t.onTelemetry(rt(BeltStatus.RUNNING, el = s, d = s * 0.8), s * 1000L)       // 60 s walked
         for (s in 61..70) t.onTelemetry(rt(BeltStatus.PAUSED, el = 60, d = 48.0), s * 1000L)
-        t.onRelease(71_000, 15 * MIN); t.onDisconnect(71_000)
+        t.onRelease(); t.onDisconnect(71_000)
         // 5 min later, after 100 s more walking on the remote, the app is back; FTMS (distance) arrives one frame after fff1
         t.onTelemetry(rt(BeltStatus.RUNNING, el = 160), 371_000)
         t.onTelemetry(rt(BeltStatus.RUNNING, el = 161, d = 128.8), 372_000)
@@ -259,29 +259,28 @@ class SessionTrackerTest {
     @Test fun firstFrameAfterTheGapMayBeTheEnd() {
         val t = SessionTracker()
         for (s in 0..60) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
-        t.onRelease(61_000, 15 * MIN); t.onDisconnect(61_000)
+        t.onRelease(); t.onDisconnect(61_000)
         val out = t.onTelemetry(rt(BeltStatus.STOPPED, el = 100), 400_000)!!      // walked 40 s more, then End on the remote
         assertEquals(100L, out.activeSec)
     }
 
-    @Test fun pauseOfTwentyMinutesPlusHoldoffStillSurvivesAResumeOnTheRemote() {
+    @Test fun releasedWalkStillEndsAtTheUsualPauseBackstopDatedToThePause() {
         val t = SessionTracker()
         for (s in 0..60) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
-        for (s in 61..70) t.onTelemetry(rt(BeltStatus.PAUSED, el = 60), s * 1000L)       // paused at 61 s
-        val rel = 61_000 + 20 * MIN
-        t.onRelease(rel, 15 * MIN); t.onDisconnect(rel)
-        assertNull(t.tick(61_000 + 31 * MIN))                       // past the plain 30 min backstop, but released
-        assertNull(t.onTelemetry(rt(BeltStatus.RUNNING, el = 60 + 600), 61_000 + 35 * MIN))   // back at 35 min, walked 10 min
-        assertTrue(t.isActive)
+        t.onTelemetry(rt(BeltStatus.PAUSED, el = 60), 61_000)
+        t.onRelease(); t.onDisconnect(61_000 + 20 * MIN)
+        assertNull(t.tick(61_000 + 29 * MIN))
+        val out = t.tick(61_000 + 30 * MIN)                          // the pad never came back
+        assertNotNull(out); assertEquals(61_000L, out.endMs)
+        assertEquals(60L, out.activeSec)
     }
 
     @Test fun releasedShortlyAfterPausingStillEndsAtTheUsualBackstop() {
         val t = SessionTracker()
         for (s in 0..60) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
         t.onTelemetry(st(BeltStatus.PAUSED), 61_000)
-        t.onRelease(61_000 + 5 * MIN, 15 * MIN); t.onDisconnect(61_000 + 5 * MIN)
+        t.onRelease(); t.onDisconnect(61_000 + 5 * MIN)
         assertNull(t.tick(61_000 + 29 * MIN))
-        // 5 + 15 + 2 = 22 min deadline is earlier than the 30 min backstop, so 30 min decides
         val out = t.tick(61_000 + 30 * MIN)
         assertNotNull(out); assertEquals(61_000L, out.endMs)
     }
@@ -289,9 +288,21 @@ class SessionTrackerTest {
     @Test fun aRealDisconnectAfterTheFirstFrameBackStillTimesOut() {
         val t = SessionTracker()
         for (s in 0..60) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
-        t.onRelease(61_000, 15 * MIN); t.onDisconnect(61_000)
+        t.onRelease(); t.onDisconnect(61_000)
+        t.onReconnected()
         t.onTelemetry(rt(BeltStatus.RUNNING, el = 90), 200_000)
         t.onDisconnect(210_000)
         assertNotNull(t.tick(210_000 + 61_000))
+    }
+
+    @Test fun aStatusFrameBetweenReleaseAndTheDisconnectDoesNotArmTheTimeout() {
+        val t = SessionTracker()
+        for (s in 0..60) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
+        for (s in 61..70) t.onTelemetry(rt(BeltStatus.PAUSED, el = 60), s * 1000L)
+        t.onRelease()
+        t.onTelemetry(rt(BeltStatus.PAUSED, el = 60), 71_000)       // the pad is still sending when we let go
+        t.onDisconnect(71_300)
+        assertNull(t.tick(71_300 + 5 * MIN))
+        assertTrue(t.isActive)
     }
 }

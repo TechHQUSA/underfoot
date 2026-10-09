@@ -61,8 +61,6 @@ import java.util.UUID
 @SuppressLint("MissingPermission") // btGranted() is checked in onStartCommand before any BLE call
 class WalkService : Service() {
     companion object {
-        private const val SLEEP_HOLDOFF_MS = 15 * 60_000L
-
         fun btGranted(ctx: Context): Boolean =
             if (Build.VERSION.SDK_INT >= 31)
                 listOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
@@ -129,7 +127,7 @@ class WalkService : Service() {
     private var scanRetries = 0
     private var destroyed = false                  // stale posts from the old BLE manager must not revive a stopped service
     private var tickCount = 0
-    private val gate = SleepGate(holdoffMs = SLEEP_HOLDOFF_MS)   // owns the hold-off: the pad stays awake while anything is connected to it
+    private val gate = SleepGate()                 // owns the rest state: the pad stays awake while connected, and a connection attempt wakes it
     private val findTask = Runnable { findPad() }
     private var last = Live()
     private val store by lazy { AppDb.get(this).let { SessionStore(it.sessions(), it.profile()) } }
@@ -145,12 +143,13 @@ class WalkService : Service() {
         }
     }
 
-    /** Paused or idle for the configured time: disconnect and stay away for a while, so the pad can time out and switch itself off. */
+    /** Paused or idle for the configured time: disconnect and stay away until the user asks, so the pad can time out and switch itself off. */
     private fun checkSleep() {
         val now = SystemClock.elapsedRealtime()
         gate.minutes = prefs.sleepMin
         if (!gate.onTick(last.connected, last.status, now)) return
-        tracker.onRelease(now, SLEEP_HOLDOFF_MS)
+        tracker.onRelease()
+        main.removeCallbacks(findTask); stopScan()   // nothing already underway may reach the pad once we let go
         manager?.disconnect()?.enqueue()
     }
 
@@ -319,7 +318,7 @@ class WalkService : Service() {
     private fun handleConnection(connected: Boolean) {
         if (destroyed) return
         connecting = false
-        if (connected) { scanRetries = 0; pendingAddress?.let { prefs.padAddress = it } }   // onDeviceReady: services validated
+        if (connected) { tracker.onReconnected(); scanRetries = 0; pendingAddress?.let { prefs.padAddress = it } }   // onDeviceReady: services validated
         last = last.copy(connected = connected)
         if (!connected) {
             merger.reset()
@@ -332,9 +331,8 @@ class WalkService : Service() {
 
     /** Connect straight to the stored address, otherwise scan. Retries every 5 s while Bluetooth is off. */
     private fun findPad() {
-        if (destroyed) return
-        val wait = gate.waitMs(SystemClock.elapsedRealtime())
-        if (wait > 0) { scheduleFind(wait); return }
+        if (destroyed || last.connected || connecting) return
+        if (gate.resting) return                   // released so the pad can sleep: only Reconnect now looks for it again
         val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
         if (adapter == null || !adapter.isEnabled) {
             last = last.copy(problem = Problem.BLUETOOTH_OFF); publish(); scheduleFind(5_000); return
@@ -384,7 +382,7 @@ class WalkService : Service() {
         val prof = profile
         LiveState.flow.value = last.copy(
             activeSec = p.activeSec, distanceM = p.distanceM,
-            restingSec = gate.waitMs(SystemClock.elapsedRealtime()) / 1000,
+            resting = gate.resting,
             steps = p.steps?.takeIf { it > 0 } ?: Estimators.steps(p.distanceM, prof.heightCm), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), prof.weightKg),
         )
     }

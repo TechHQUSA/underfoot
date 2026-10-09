@@ -74,10 +74,10 @@
     <string name="hc_connected">Connected to Health Connect</string>
     <string name="hc_checking">Checking Health Connect...</string>
     <string name="status_resting">Resting</string>
-    <string name="resting_text">Resting so the pad can sleep. Reconnects in %d min.</string>
+    <string name="resting_text">Resting so the pad can sleep. Tap Reconnect when you want to track again. Connecting wakes the pad.</string>
     <string name="reconnect_now">Reconnect now</string>
     <string name="sleep_title">Let the pad sleep</string>
-    <string name="sleep_hint">The pad stays on while the app is connected. After this long paused or idle the app disconnects for 15 minutes so the pad can switch itself off.</string>
+    <string name="sleep_hint">The pad stays on while the app is connected. After this long paused or idle the app disconnects and waits until you tap Reconnect on Today, so the pad can switch itself off. Connecting wakes it again.</string>
     <string name="sleep_off">Off</string>
     <string name="sleep_min">%d min</string>
     <string name="record_auto">Record automatically</string>

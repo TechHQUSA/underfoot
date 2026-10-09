@@ -1,0 +1,1 @@
+Let the pad sleep now waits for you: after it lets go, the app does not reconnect on its own (connecting wakes the pad). Tap Reconnect on Today when you want to track again.

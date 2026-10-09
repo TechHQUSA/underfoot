@@ -29,8 +29,8 @@ JDK 17 and the Android SDK (platform 36) are required.
 - Tap "Forget paired pad" in Settings while connected: the connection drops, the app rescans, and the pad pairs again with a single session per walk.
 - Tap the recording notification: the app opens.
 - Set "Let the pad sleep" to 5 min, pause the walk and wait: the app disconnects, the pad switches itself off, and resuming the walk afterwards keeps one session.
-- While the app is resting (Today says so with a countdown), resume on the remote and walk a few minutes, then tap Reconnect now: the saved walk's duration matches the pad's clock, not just the time the app saw.
-- Set "Let the pad sleep" to 20 min, pause, let the app release, resume on the remote after 30+ minutes: still one session.
+- After the app releases the pad (Today says Resting), the pad powers off and stays off; the app does not reconnect on its own, not even after an hour.
+- While resting, resume on the remote within the pause backstop (30 min after the pause) and walk a few minutes, then tap Reconnect: the saved walk's duration matches the pad's clock, not just the time the app saw.
 - Force a crash in a debug build, relaunch: the dialog appears, Send opens the share sheet, and the prompt does not repeat.
 
 ## Releases

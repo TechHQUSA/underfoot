@@ -15,8 +15,6 @@ class SessionTracker(
     private val pauseEndMs: Long = 30 * 60_000,
     private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
-    private companion object { const val RELEASE_GRACE_MS = 2 * 60_000L }
-
     private data class Totals(val dist: Double? = null, val steps: Int? = null, val kcal: Double? = null)
 
     private var startMs: Long? = null
@@ -30,8 +28,7 @@ class SessionTracker(
     private var latest = Totals()
     private var disconnectedAt: Long? = null
     private var pausedSince: Long? = null
-    private var released = false                   // the app dropped the link on purpose (see onRelease); cleared by the next frame
-    private var releaseDeadline = 0L
+    private var released = false                   // the app dropped the link on purpose (see onRelease); cleared when the link is back
     private var lastElapsed: Int? = null           // pad counters from the latest frame, used to fill the time spent unobserved
     private var lastDist: Double? = null
     private var gapDistFrom: Double? = null        // distance at the start of a gap whose distance is not filled yet (FTMS arrives after fff1)
@@ -47,7 +44,7 @@ class SessionTracker(
     fun onTelemetry(t: Telemetry, nowMs: Long): SessionSummary? {
         // An expired disconnect ends the old session before this frame is considered; a pad that is moving again is not an expired pause.
         val expired = expire(nowMs, pauseMayExpire = t.status != BeltStatus.RUNNING && t.status != BeltStatus.STARTING)
-        disconnectedAt = null; released = false
+        disconnectedAt = null
         val gap = unobserved; unobserved = false
         val open = startMs != null
         if (open) {
@@ -83,15 +80,16 @@ class SessionTracker(
     }
 
     fun onDisconnect(nowMs: Long) {
-        if (released) return                       // the planned disconnect that follows onRelease
+        if (released) { if (startMs != null) unobserved = true; return }    // the planned disconnect that follows onRelease
         if (startMs != null) unobserved = true
         if (startMs != null && disconnectedAt == null) disconnectedAt = nowMs
     }
 
-    /** The app drops the link on purpose so the pad can sleep: unlike a lost link this does not start the disconnect timeout. */
-    fun onRelease(nowMs: Long, holdoffMs: Long) {
-        if (startMs != null) { unobserved = true; released = true; releaseDeadline = nowMs + holdoffMs + RELEASE_GRACE_MS }
-    }
+    /** The app drops the link on purpose so the pad can sleep: unlike a lost link this does not start the disconnect timeout. A paused walk still ends at the usual pause backstop. */
+    fun onRelease() { if (startMs != null) { unobserved = true; released = true } }
+
+    /** The link is back (the user asked for it): an unplanned loss times out again. `unobserved` stays until the first frame fills the gap. */
+    fun onReconnected() { released = false }
 
     fun tick(nowMs: Long): SessionSummary? = expire(nowMs, pauseMayExpire = true)
 
@@ -100,8 +98,7 @@ class SessionTracker(
         if (d != null && nowMs - d >= disconnectMs) return end(d)
         val p = pausedSince
         if (pauseMayExpire && p != null) {
-            val limit = if (released) maxOf(p + pauseEndMs, releaseDeadline) else p + pauseEndMs
-            if (nowMs >= limit) return end(p)
+            if (nowMs - p >= pauseEndMs) return end(p)
         }
         return null
     }

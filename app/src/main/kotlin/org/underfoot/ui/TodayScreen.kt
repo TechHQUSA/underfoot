@@ -91,9 +91,9 @@ fun TodayScreen(
     var dragging by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), userScrollEnabled = !dragging, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { Header(live) }
-        if (live.restingSec > 0) item {
+        if (live.resting) item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.resting_text, ((live.restingSec + 59) / 60).toInt()), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.resting_text), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = onReconnect, shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.reconnect_now)) }
             }
         }
@@ -147,7 +147,7 @@ fun TodayScreen(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     stringResource(when {
-                        live.restingSec > 0 -> R.string.status_resting
+                        live.resting -> R.string.status_resting
                         !live.connected -> R.string.looking_for_pad
                         live.status == BeltStatus.RUNNING -> R.string.walking
                         live.status == BeltStatus.PAUSED || live.status == BeltStatus.PAUSING -> R.string.status_paused

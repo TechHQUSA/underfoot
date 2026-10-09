@@ -1,7 +1,6 @@
 package org.underfoot.protocol
 
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -47,15 +46,15 @@ class SleepGateTest {
         assertFalse(g.onTick(false, BeltStatus.IDLE, 1_000 + 60 * MIN))
     }
 
-    @Test fun holdoffBlocksReconnectUntilItExpiresAndCancelEndsItEarly() {
+    @Test fun staysRestingUntilCancelled() {
         val g = gate(5)
         g.onTick(true, BeltStatus.PAUSED, 1_000)
-        val at = 1_000 + 5 * MIN
-        assertTrue(g.onTick(true, BeltStatus.PAUSED, at))
-        assertEquals(15 * MIN, g.waitMs(at))
-        assertEquals(10 * MIN, g.waitMs(at + 5 * MIN))
-        assertEquals(0L, g.waitMs(at + 15 * MIN))
+        assertFalse(g.resting)
+        assertTrue(g.onTick(true, BeltStatus.PAUSED, 1_000 + 5 * MIN))
+        assertTrue(g.resting)
+        g.onTick(false, BeltStatus.IDLE, 1_000 + 600 * MIN)       // hours later, still resting
+        assertTrue(g.resting)
         g.cancel()
-        assertEquals(0L, g.waitMs(at))
+        assertFalse(g.resting)
     }
 }
