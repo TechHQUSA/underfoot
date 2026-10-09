@@ -42,6 +42,7 @@ class UrevoDriverTest {
 
     @Test fun countdownFramesAreStarting() {
         for (f in countdown) assertEquals(BeltStatus.STARTING, UrevoDriver.decodeFff1(f)!!.status)
+    for (f in countdown) assertNull(UrevoDriver.decodeFff1(f)!!.elapsedSec)      // countdown frames carry no counters, so it is never counted as walking
     }
 
     @Test fun handshakeAckIsNotTelemetry() { assertNull(UrevoDriver.decodeFff1(ack)) }

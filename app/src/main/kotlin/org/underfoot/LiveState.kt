@@ -23,6 +23,8 @@ data class Live(
     val ftmsFrames: Int = 0,
     val lastFff1Len: Int = 0,
     val commandResult: CommandResult = CommandResult.NONE,
+    /** Seconds left of the "let the pad sleep" hold-off; 0 when not resting. */
+    val restingSec: Long = 0,
 )
 
 object LiveState { val flow = MutableStateFlow(Live()) }

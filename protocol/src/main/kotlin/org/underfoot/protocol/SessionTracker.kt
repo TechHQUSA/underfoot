@@ -15,6 +15,8 @@ class SessionTracker(
     private val pauseEndMs: Long = 30 * 60_000,
     private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
+    private companion object { const val RELEASE_GRACE_MS = 2 * 60_000L }
+
     private data class Totals(val dist: Double? = null, val steps: Int? = null, val kcal: Double? = null)
 
     private var startMs: Long? = null
@@ -28,7 +30,11 @@ class SessionTracker(
     private var latest = Totals()
     private var disconnectedAt: Long? = null
     private var pausedSince: Long? = null
-    private var released = false
+    private var released = false                   // the app dropped the link on purpose (see onRelease); cleared by the next frame
+    private var releaseDeadline = 0L
+    private var lastElapsed: Int? = null           // pad counters from the latest frame, used to fill the time spent unobserved
+    private var lastDist: Double? = null
+    private var gapDistFrom: Double? = null        // distance at the start of a gap whose distance is not filled yet (FTMS arrives after fff1)
     private var unobserved = false                 // a link loss since the last frame: the interval across it is not walking time
 
     val isActive: Boolean get() = startMs != null
@@ -39,11 +45,19 @@ class SessionTracker(
     )
 
     fun onTelemetry(t: Telemetry, nowMs: Long): SessionSummary? {
-        val expired = tick(nowMs)            // an expired disconnect ends the old session before this frame is considered
+        // An expired disconnect ends the old session before this frame is considered; a pad that is moving again is not an expired pause.
+        val expired = expire(nowMs, pauseMayExpire = t.status != BeltStatus.RUNNING && t.status != BeltStatus.STARTING)
         disconnectedAt = null; released = false
         val gap = unobserved; unobserved = false
         val open = startMs != null
         if (open) {
+            if (gap) {                       // time the app did not see: take it from the pad's own counters
+                val e0 = lastElapsed; val e1 = t.elapsedSec
+                if (e0 != null && e1 != null && e1 > e0) activeMs += (e1 - e0) * 1000L
+                gapDistFrom = lastDist
+            }
+            val d1 = t.distanceM; val d0 = gapDistFrom
+            if (d0 != null && d1 != null) { if (d1 > d0) integratedM += d1 - d0; gapDistFrom = null }
             val dt = nowMs - lastMs
             if (!gap && lastStatus == BeltStatus.RUNNING && t.status == BeltStatus.RUNNING && dt in 1..gapMs) {
                 activeMs += dt
@@ -56,6 +70,7 @@ class SessionTracker(
                 else -> {}
             }
         }
+        t.elapsedSec?.let { lastElapsed = it }; t.distanceM?.let { lastDist = it }
         lastMs = nowMs
         lastStatus = t.status
         lastSpeedKmh = t.speedKmh
@@ -74,13 +89,20 @@ class SessionTracker(
     }
 
     /** The app drops the link on purpose so the pad can sleep: unlike a lost link this does not start the disconnect timeout. */
-    fun onRelease() { if (startMs != null) { unobserved = true; released = true } }
+    fun onRelease(nowMs: Long, holdoffMs: Long) {
+        if (startMs != null) { unobserved = true; released = true; releaseDeadline = nowMs + holdoffMs + RELEASE_GRACE_MS }
+    }
 
-    fun tick(nowMs: Long): SessionSummary? {
+    fun tick(nowMs: Long): SessionSummary? = expire(nowMs, pauseMayExpire = true)
+
+    private fun expire(nowMs: Long, pauseMayExpire: Boolean): SessionSummary? {
         val d = disconnectedAt
         if (d != null && nowMs - d >= disconnectMs) return end(d)
         val p = pausedSince
-        if (p != null && nowMs - p >= pauseEndMs) return end(p)
+        if (pauseMayExpire && p != null) {
+            val limit = if (released) maxOf(p + pauseEndMs, releaseDeadline) else p + pauseEndMs
+            if (nowMs >= limit) return end(p)
+        }
         return null
     }
 
@@ -106,7 +128,7 @@ class SessionTracker(
             delta(base.kcal, latest.kcal),
             wallStartMs,
         )
-        startMs = null; disconnectedAt = null; released = false; unobserved = false; pausedSince = null; activeMs = 0; integratedM = 0.0
+        startMs = null; disconnectedAt = null; released = false; lastElapsed = null; lastDist = null; gapDistFrom = null; unobserved = false; pausedSince = null; activeMs = 0; integratedM = 0.0
         base = Totals(); latest = Totals()
         return if (summary.activeSec >= minActiveSec) summary else null
     }

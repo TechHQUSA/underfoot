@@ -54,6 +54,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -84,12 +85,18 @@ private const val DIAL_MAX_KMH = 6.44
 @Composable
 fun TodayScreen(
     live: Live, today: DayTotals, profileSet: Boolean, imperial: Boolean,
-    controlsEnabled: Boolean, onCommand: (PadCommand) -> Unit, onSetSpeed: (Double) -> Unit,
+    controlsEnabled: Boolean, onCommand: (PadCommand) -> Unit, onSetSpeed: (Double) -> Unit, onReconnect: () -> Unit,
 ) {
     val allowed = FtmsControl.allowed(live.status, live.connected)
     var dragging by remember { mutableStateOf(false) }
     LazyColumn(Modifier.fillMaxSize(), userScrollEnabled = !dragging, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { Header(live) }
+        if (live.restingSec > 0) item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.resting_text, ((live.restingSec + 59) / 60).toInt()), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = onReconnect, shape = RoundedCornerShape(24.dp)) { Text(stringResource(R.string.reconnect_now)) }
+            }
+        }
         if (live.problem != Problem.NONE) item {
             Text(
                 stringResource(when (live.problem) {
@@ -140,6 +147,7 @@ fun TodayScreen(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     stringResource(when {
+                        live.restingSec > 0 -> R.string.status_resting
                         !live.connected -> R.string.looking_for_pad
                         live.status == BeltStatus.RUNNING -> R.string.walking
                         live.status == BeltStatus.PAUSED || live.status == BeltStatus.PAUSING -> R.string.status_paused

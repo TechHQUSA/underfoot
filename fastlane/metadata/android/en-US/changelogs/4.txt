@@ -1,0 +1,2 @@
+New: Settings > Let the pad sleep. The pad stays on while the app is connected; this lets go after 5, 10 or 20 minutes paused or idle so it can switch itself off.
+Walks resumed on the remote while the app rests are timed from the pad's own clock.

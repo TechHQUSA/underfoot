@@ -106,6 +106,7 @@ class MainActivity : ComponentActivity() {
                     tab == 0 -> TodayScreen(
                         live, today, profile != null, prefs.imperial, prefs.controlsEnabled,
                         onCommand = { WalkService.command(this@MainActivity, it) }, onSetSpeed = { WalkService.setSpeed(this@MainActivity, it) },
+                        onReconnect = { WalkService.reconnectNow(this@MainActivity) },
                     )
                     tab == 1 -> HistoryScreen(sessions, prefs.imperial)
                     rawLog -> RawLogScreen(prefs) { rawLog = false }

@@ -51,6 +51,7 @@ import org.underfoot.protocol.Estimators
 import org.underfoot.protocol.Profile
 import org.underfoot.protocol.SessionSummary
 import org.underfoot.protocol.SessionTracker
+import org.underfoot.protocol.SleepGate
 import org.underfoot.protocol.SpeedTarget
 import org.underfoot.protocol.TelemetryMerger
 import org.underfoot.protocol.UrevoDriver
@@ -70,8 +71,14 @@ class WalkService : Service() {
 
         const val ACTION_COMMAND = "org.underfoot.COMMAND"
         const val EXTRA_COMMAND = "command"
+        const val ACTION_RECONNECT = "org.underfoot.RECONNECT"
         const val ACTION_SPEED = "org.underfoot.SET_SPEED"
         const val EXTRA_SPEED_KMH = "kmh"
+
+        /** Called from the UI: ends the sleep hold-off and looks for the pad right away. */
+        fun reconnectNow(ctx: Context) {
+            ctx.startService(Intent(ctx, WalkService::class.java).setAction(ACTION_RECONNECT))
+        }
 
         /** Called from the UI when a drag on the dial ends or a +/- tap settles. */
         fun setSpeed(ctx: Context, kmh: Double) {
@@ -104,7 +111,7 @@ class WalkService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val tracker = SessionTracker()
     private val merger = TelemetryMerger()
-    private val gate = CommandGate()
+    private val cmdGate = CommandGate()
     private var pendingCmd: PadCommand? = null
     private var pendingBefore = BeltStatus.IDLE        // belt status when the pending command was sent
     private var cmdSeq = 0
@@ -122,8 +129,8 @@ class WalkService : Service() {
     private var scanRetries = 0
     private var destroyed = false                  // stale posts from the old BLE manager must not revive a stopped service
     private var tickCount = 0
-    private var quietSince: Long? = null           // when the pad last went paused or idle while connected
-    private var holdoffUntil = 0L                  // no reconnect before this: the pad stays awake while anything is connected to it
+    private val gate = SleepGate(holdoffMs = SLEEP_HOLDOFF_MS)   // owns the hold-off: the pad stays awake while anything is connected to it
+    private val findTask = Runnable { findPad() }
     private var last = Live()
     private val store by lazy { AppDb.get(this).let { SessionStore(it.sessions(), it.profile()) } }
     @Volatile private var profile = Profile.DEFAULT    // live display only; saved walks read the stored profile at save time
@@ -141,16 +148,14 @@ class WalkService : Service() {
     /** Paused or idle for the configured time: disconnect and stay away for a while, so the pad can time out and switch itself off. */
     private fun checkSleep() {
         val now = SystemClock.elapsedRealtime()
-        val quiet = last.connected && last.status != BeltStatus.RUNNING && last.status != BeltStatus.STARTING
-        if (!quiet) { quietSince = null; return }
-        val since = quietSince ?: now.also { quietSince = it }
-        val min = prefs.sleepMin
-        if (min <= 0 || now - since < min * 60_000L) return
-        quietSince = null
-        holdoffUntil = now + SLEEP_HOLDOFF_MS
-        tracker.onRelease()
+        gate.minutes = prefs.sleepMin
+        if (!gate.onTick(last.connected, last.status, now)) return
+        tracker.onRelease(now, SLEEP_HOLDOFF_MS)
         manager?.disconnect()?.enqueue()
     }
+
+    /** All delayed pad searches go through here, so Reconnect now and a pending retry never run twice. */
+    private fun scheduleFind(ms: Long) { main.removeCallbacks(findTask); main.postDelayed(findTask, ms) }
 
     /** Bluetooth switched off or on: a scan in flight dies with the adapter, so forget it and look again once it is back. */
     private val btState = object : android.content.BroadcastReceiver() {
@@ -178,7 +183,7 @@ class WalkService : Service() {
     private fun handleScanFailed() {
         if (destroyed) return
         if (++scanRetries > 5) { last = last.copy(problem = Problem.SCAN_FAILED); publish(); return }
-        main.postDelayed({ findPad() }, 10_000)
+        scheduleFind(10_000)
     }
 
     private fun connect(device: BluetoothDevice, auto: Boolean = false) {
@@ -208,6 +213,7 @@ class WalkService : Service() {
         if (intent?.action == ACTION_COMMAND) {
             runCatching { PadCommand.valueOf(intent.getStringExtra(EXTRA_COMMAND) ?: "") }.getOrNull()?.let(::runCommand)
         }
+        if (intent?.action == ACTION_RECONNECT) { gate.cancel(); scheduleFind(0) }
         if (intent?.action == ACTION_SPEED) runSetSpeed(intent.getDoubleExtra(EXTRA_SPEED_KMH, Double.NaN))
         return START_STICKY
     }
@@ -239,7 +245,7 @@ class WalkService : Service() {
      */
     private fun runCommand(cmd: PadCommand) {
         if (!prefs.controlsEnabled || cmd !in FtmsControl.allowed(last.status, last.connected)) return
-        if (!gate.accept(cmd, SystemClock.elapsedRealtime())) return
+        if (!cmdGate.accept(cmd, SystemClock.elapsedRealtime())) return
         val m = manager ?: return
         pendingCmd = cmd; pendingBefore = last.status
         if (prefs.rawLog) log.append("tx:${cmd.name}", FtmsControl.frame(cmd))
@@ -296,6 +302,7 @@ class WalkService : Service() {
         last = last.copy(fff1Frames = last.fff1Frames + 1, lastFff1Len = bytes.size)
         if (prefs.rawLog) log.append("fff1", bytes)
         val t = merger.merge(UrevoDriver.decodeFff1(bytes) ?: return)
+        if (t.status == BeltStatus.RUNNING || t.status == BeltStatus.STARTING) gate.cancel()   // moving again: a disconnect still queued must not keep us away
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
         last = last.copy(status = t.status, speedKmh = if (t.status == BeltStatus.RUNNING) (t.speedKmh ?: 0.0) else 0.0)
         pendingCmd?.let { if (FtmsControl.confirmedBy(it, pendingBefore, t.status)) finishCommand(CommandResult.OK) }   // some pads never reply on the control point
@@ -318,19 +325,19 @@ class WalkService : Service() {
             merger.reset()
             tracker.onDisconnect(SystemClock.elapsedRealtime())
             last = last.copy(status = BeltStatus.IDLE, speedKmh = 0.0)
-            main.postDelayed({ findPad() }, 5_000)
-        } else quietSince = null
+            scheduleFind(5_000)
+        }
         publish()
     }
 
     /** Connect straight to the stored address, otherwise scan. Retries every 5 s while Bluetooth is off. */
     private fun findPad() {
         if (destroyed) return
-        val wait = holdoffUntil - SystemClock.elapsedRealtime()
-        if (wait > 0) { main.postDelayed({ findPad() }, wait); return }
+        val wait = gate.waitMs(SystemClock.elapsedRealtime())
+        if (wait > 0) { scheduleFind(wait); return }
         val adapter = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
         if (adapter == null || !adapter.isEnabled) {
-            last = last.copy(problem = Problem.BLUETOOTH_OFF); publish(); main.postDelayed({ findPad() }, 5_000); return
+            last = last.copy(problem = Problem.BLUETOOTH_OFF); publish(); scheduleFind(5_000); return
         }
         last = last.copy(problem = Problem.NONE)
         val addr = prefs.padAddress
@@ -377,6 +384,7 @@ class WalkService : Service() {
         val prof = profile
         LiveState.flow.value = last.copy(
             activeSec = p.activeSec, distanceM = p.distanceM,
+            restingSec = gate.waitMs(SystemClock.elapsedRealtime()) / 1000,
             steps = p.steps?.takeIf { it > 0 } ?: Estimators.steps(p.distanceM, prof.heightCm), kcal = Estimators.kcal(p.distanceM, p.activeSec.toDouble(), prof.weightKg),
         )
     }
