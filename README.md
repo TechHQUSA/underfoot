@@ -5,7 +5,7 @@ Open-source Android app for UREVO walking pads. It records your walks over Bluet
 Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro").
 
 ## What it does
-- **Records automatically.** When the pad is on, a background service connects and records while the belt runs. A walk ends when you end it on the pad (long-press play/pause) or in the app, or when the pad powers off.
+- **Records while you use it.** Open the app and it connects to the pad and records while the belt runs, including with the phone locked. It leaves the pad alone otherwise (connecting powers the pad on); an optional setting keeps it connected in the background. A walk ends when you end it on the pad (long-press play/pause) or in the app, or when the pad powers off.
 - **Shows live numbers:** speed (mph, or km/h), time, distance, calories and steps, with a speed dial.
 - **Controls the belt:** Start, Pause/Resume, a red Stop button and belt speed (drag the dial handle or tap - and +, 0.6-4.0 mph). They send only what you tap, and you can switch the controls off in Settings.
 - **Saves to Health Connect** as a Walking exercise session with steps, distance and total calories.

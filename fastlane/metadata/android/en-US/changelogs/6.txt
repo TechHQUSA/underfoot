@@ -1,0 +1,2 @@
+The app no longer connects to the pad on its own, which powered the pad on. It connects when you open it and lets go about 2 minutes after you leave and the pad is idle. The old always-connected mode is now Settings > Keep pad connected in the background (off by default).
+With Record raw frames on, the pad's advertising is logged while not connected.

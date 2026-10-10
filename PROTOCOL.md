@@ -56,6 +56,7 @@ button). Not yet measured: the exact indications the pad sends back, and the `ff
 - Paused from the app (`08 02`) or from the remote (`2ADA` `02 02` with no preceding command), the pad stays in `0A` with counters frozen for 10+ minutes (the longest remote pause logged was 603 s); it does not sleep or time out while the app is connected, whoever paused it.
 - A long press of play/pause on the remote is End (`2ADA` `02 01`, then `fff1` status `01`, then idle `00`). Once, the pad then went to `06` (standby, BLE still connected) within 7 s and stayed there until the remote woke it. Twice more, End left the pad in idle `00` for 10+ minutes with no `06`, so End alone does not put it to sleep. What triggers `06` is unknown.
 - A connection attempt wakes a pad that looks switched off (its radio stays alive): the pad shows 0000 and sends idle frames within about a second of the connect. So an app that wants the pad to sleep must not reconnect on its own.
+- While the app is open but not connected, the raw log records the pad's advertising (`adv:<rssi>` lines) so the "off" and "on" states can be compared.
 - The 3-2-1 countdown frames (`02 51 02 ..`, 6 bytes) carry no counters; elapsed stays at its pre-pause value through the countdown and resumes one second after the belt runs. The app fills time it could not observe (a deliberate release, or a link drop) from the elapsed and distance counters.
 - Pause on the remote, then Resume (`07`) from the app after 73-100 s: the pad resumes with its counters intact.
 

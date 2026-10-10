@@ -43,7 +43,7 @@
     <string name="settings_section_pad">Pad</string>
     <string name="settings_section_privacy">Privacy</string>
     <string name="settings_profile_hint">Used only to estimate steps and calories. Stays on this device.</string>
-    <string name="record_auto_hint">Connects to your pad in the background and saves each walk.</string>
+    <string name="record_auto_hint">Connects whenever the pad is in range, even with the app closed, and saves every walk. Connecting powers the pad on and keeps it on. Off: the app connects only while you use it.</string>
     <string name="settings_controls_hint">Shows Start, Pause, Stop and the speed dial. Off keeps the app read-only.</string>
     <string name="offer_crash_hint">Nothing is sent unless you tap Send after a crash.</string>
     <string name="forget_pad_hint">Use this if you got a new pad.</string>
@@ -80,7 +80,7 @@
     <string name="sleep_hint">The pad stays on while the app is connected. After this long paused or idle the app disconnects and waits until you tap Reconnect on Today, so the pad can switch itself off. Connecting wakes it again.</string>
     <string name="sleep_off">Off</string>
     <string name="sleep_min">%d min</string>
-    <string name="record_auto">Record automatically</string>
+    <string name="record_auto">Keep pad connected in the background</string>
     <string name="forget_pad">Forget paired pad</string>
     <string name="offer_crash">Offer to send crash reports</string>
     <string name="version_label">Version %s</string>

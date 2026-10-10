@@ -85,7 +85,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
     var h by remember(profile, imperial) {
         mutableStateOf(profile?.let { "%.1f".format(Locale.US, if (imperial) cmToIn(it.heightCm) else it.heightCm) } ?: "")
     }
-    var auto by remember { mutableStateOf(prefs.autoRecord) }
+    var auto by remember { mutableStateOf(prefs.keepConnected) }
     var crash by remember { mutableStateOf(prefs.crashOffer) }
     var controls by remember { mutableStateOf(prefs.controlsEnabled) }
     var sleepMin by remember { mutableIntStateOf(prefs.sleepMin) }
@@ -142,7 +142,7 @@ fun SettingsScreen(profile: ProfileEntity?, prefs: AppPrefs, onSave: (Double, Do
         }
 
         Section(stringResource(R.string.settings_section_pad), null) {
-            SwitchRow(stringResource(R.string.record_auto), stringResource(R.string.record_auto_hint), auto) { auto = it; prefs.autoRecord = it; WalkService.sync(ctx, prefs) }
+            SwitchRow(stringResource(R.string.record_auto), stringResource(R.string.record_auto_hint), auto) { auto = it; prefs.keepConnected = it; WalkService.sync(ctx, prefs, userOpened = true) }
             SwitchRow(stringResource(R.string.settings_controls), stringResource(R.string.settings_controls_hint), controls) { controls = it; prefs.controlsEnabled = it }
             Text(stringResource(R.string.sleep_title))
             Text(stringResource(R.string.sleep_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

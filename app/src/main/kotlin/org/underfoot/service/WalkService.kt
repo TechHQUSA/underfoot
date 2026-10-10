@@ -67,6 +67,8 @@ class WalkService : Service() {
                     .all { ContextCompat.checkSelfPermission(ctx, it) == PackageManager.PERMISSION_GRANTED }
             else ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+        private const val IDLE_STOP_MS = 2 * 60_000L
+
         const val ACTION_COMMAND = "org.underfoot.COMMAND"
         const val EXTRA_COMMAND = "command"
         const val ACTION_RECONNECT = "org.underfoot.RECONNECT"
@@ -91,16 +93,24 @@ class WalkService : Service() {
         /** Restarts the service so it drops the current connection and looks for a pad again (used after Forget pad). */
         fun restart(ctx: Context, prefs: AppPrefs) {
             ctx.stopService(Intent(ctx, WalkService::class.java))
-            sync(ctx, prefs)
+            sync(ctx, prefs, userOpened = true)
         }
 
-        /** Single entry point for the UI, the boot receiver and the auto-record toggle. */
-        fun sync(ctx: Context, prefs: AppPrefs) {
+        /** Set by MainActivity: while the app is on screen the service stays up; once hidden and idle it stops itself. */
+        @Volatile var visibleActivities = 0
+        val appVisible: Boolean get() = visibleActivities > 0
+
+        /**
+         * Single entry point for the UI, the boot receiver and the settings toggle. The service starts only when the user opened the app
+         * (`userOpened`) or chose to keep the pad connected in the background: connecting powers the pad on.
+         */
+        fun sync(ctx: Context, prefs: AppPrefs, userOpened: Boolean = false) {
             val i = Intent(ctx, WalkService::class.java)
-            if (prefs.autoRecord && btGranted(ctx)) ContextCompat.startForegroundService(ctx, i)
+            val wanted = prefs.keepConnected || userOpened
+            if (wanted && btGranted(ctx)) ContextCompat.startForegroundService(ctx, i)
             else {
                 ctx.stopService(i)
-                LiveState.flow.value = Live(problem = if (prefs.autoRecord) Problem.PERMISSION else Problem.NONE)
+                LiveState.flow.value = Live(problem = if (wanted) Problem.PERMISSION else Problem.NONE)
             }
         }
     }
@@ -138,6 +148,8 @@ class WalkService : Service() {
             if (destroyed) return
             tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
             checkSleep()
+            checkIdleStop()
+            checkAdvScan()
             if (++tickCount % 30 == 0 && store.hasPending) flush()
             publish(); main.postDelayed(this, 1000)
         }
@@ -153,6 +165,40 @@ class WalkService : Service() {
         manager?.disconnect()?.enqueue()
     }
 
+    private var idleSince: Long? = null
+
+    /** Hidden app and nothing happening on the pad: stop, so nothing keeps the pad awake. A walk in progress or a pause keeps it up. */
+    private fun checkIdleStop() {
+        if (prefs.keepConnected || appVisible) { idleSince = null; return }
+        val busy = last.connected && last.status != BeltStatus.IDLE && last.status != BeltStatus.STOPPED && last.status != BeltStatus.UNKNOWN
+        val now = SystemClock.elapsedRealtime()
+        if (busy && !gate.resting) { idleSince = null; return }
+        val since = idleSince ?: now.also { idleSince = it }
+        if (gate.resting || now - since >= IDLE_STOP_MS) stopSelf()
+    }
+
+    /** Diagnostic (raw log on): log what the pad advertises while we are not connected, to learn whether "off" and "on" look different. Scanning never connects. */
+    private var advScanning = false
+    private val advCb = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val bytes = result.scanRecord?.bytes ?: return
+            main.post { if (!destroyed && prefs.rawLog) log.append("adv:${result.rssi}", bytes) }
+        }
+    }
+
+    private fun checkAdvScan() {
+        val addr = prefs.padAddress
+        val want = prefs.rawLog && !last.connected && addr != null && BluetoothAdapter.checkBluetoothAddress(addr)
+        if (want == advScanning) return
+        val scanner = (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
+        if (scanner == null) return
+        advScanning = want
+        runCatching {
+            if (want) scanner.startScan(listOf(ScanFilter.Builder().setDeviceAddress(addr).build()), ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), advCb)
+            else scanner.stopScan(advCb)
+        }.onFailure { advScanning = false }
+    }
+
     /** All delayed pad searches go through here, so Reconnect now and a pending retry never run twice. */
     private fun scheduleFind(ms: Long) { main.removeCallbacks(findTask); main.postDelayed(findTask, ms) }
 
@@ -161,7 +207,7 @@ class WalkService : Service() {
         override fun onReceive(c: Context, i: Intent) {
             if (destroyed) return
             when (i.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
-                BluetoothAdapter.STATE_OFF -> { scanning = false; connecting = false }
+                BluetoothAdapter.STATE_OFF -> { scanning = false; connecting = false; advScanning = false }
                 BluetoothAdapter.STATE_ON -> findPad()
             }
         }
@@ -405,11 +451,13 @@ class WalkService : Service() {
         runCatching { unregisterReceiver(btState) }
         main.removeCallbacksAndMessages(null)
         stopScan()
+        if (advScanning) runCatching { (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.bluetoothLeScanner?.stopScan(advCb) }
         // The final walk is written before the service goes away: a process kill right after onDestroy would otherwise lose it.
         tracker.finish(SystemClock.elapsedRealtime())?.let(store::enqueue)
         runCatching { kotlinx.coroutines.runBlocking { store.flush() } }
         manager?.close()                           // disconnects and releases the GATT client; late callbacks are ignored via `destroyed`
         manager = null
+        LiveState.flow.value = Live()
         super.onDestroy()
     }
 }

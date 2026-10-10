@@ -4,8 +4,9 @@ import android.content.Context
 
 class AppPrefs(ctx: Context) {
     private val p = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
-    var autoRecord: Boolean
-        get() = p.getBoolean("auto", true); set(v) = p.edit().putBoolean("auto", v).apply()
+    /** Stay connected to the pad in the background, from boot on. Connecting wakes the pad and keeps it on, so this is opt-in. */
+    var keepConnected: Boolean
+        get() = p.getBoolean("keep", false); set(v) = p.edit().putBoolean("keep", v).apply()
     var rawLog: Boolean
         get() = p.getBoolean("rawlog", false); set(v) = p.edit().putBoolean("rawlog", v).apply()
     var crashOffer: Boolean

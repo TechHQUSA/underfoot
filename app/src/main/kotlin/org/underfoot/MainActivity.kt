@@ -56,6 +56,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() { super.onStart(); WalkService.visibleActivities++ }
+    override fun onStop() { WalkService.visibleActivities = maxOf(0, WalkService.visibleActivities - 1); super.onStop() }
     override fun onResume() { super.onResume(); SyncScheduler.enqueue(this) }
 
     @Composable private fun App(prefs: AppPrefs, onTheme: (String) -> Unit) {
@@ -63,10 +65,10 @@ class MainActivity : ComponentActivity() {
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            WalkService.sync(this, prefs)          // starts only if Bluetooth permission was granted; otherwise Today shows why
+            WalkService.sync(this, prefs, userOpened = true)          // starts only if Bluetooth permission was granted; otherwise Today shows why
         }
         LaunchedEffect(Unit) {
-            if (prefs.autoRecord) { if (WalkService.btGranted(this@MainActivity)) WalkService.sync(this@MainActivity, prefs) else launcher.launch(perms) }
+            if (WalkService.btGranted(this@MainActivity)) WalkService.sync(this@MainActivity, prefs, userOpened = true) else launcher.launch(perms)
         }
 
         var crash by remember { mutableStateOf(CrashReporter.pending(this)) }

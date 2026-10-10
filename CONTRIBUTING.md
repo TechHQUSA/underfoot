@@ -20,9 +20,11 @@ JDK 17 and the Android SDK (platform 36) are required.
 - Pad on, app closed, walk 2 minutes: the session appears in History and in Health Connect with correct totals.
 - Pause and resume keeps one session.
 - Walk out of range for 30 seconds and back: still one session. Out of range for 70 seconds: the session ends.
-- Reboot the phone with automatic recording on: the service starts.
-- Turn "Record automatically" off with the pad in range: recording stops, the notification goes away and nothing reconnects 5 seconds later. Turn it back on: one session per walk, not two.
-- Switch the pad off for an hour with its address stored: battery use stays negligible (the background connect just waits).
+- Reboot the phone with "Keep pad connected in the background" off: nothing starts and the pad is left alone. Turn it on and reboot: the service starts and connects.
+- With it off, open the app: it connects. Lock the phone mid-walk: recording continues. End the walk and leave the app hidden: about 2 minutes later the notification goes away and the pad is no longer connected.
+- Turn "Keep pad connected in the background" off while connected and the app open: it stays connected until you leave; turn it on again: one session per walk, not two.
+- Switch the pad off for an hour with background mode on: battery use stays negligible (the background connect just waits).
+- With Record raw frames on and the app open but the pad not connected, the log fills with `adv:<rssi>` lines (the pad's advertising bytes). Record a minute each with the pad off, on and idle, and paused.
 - Bluetooth off, or the Bluetooth permission revoked: Today shows the matching message.
 - Health Connect permission denied: sessions queue and sync after you grant it.
 - In the Health Connect app, one walk shows as one Walking session with steps, distance and calories. Re-running sync (toggle the permission off and on, reopen the app) creates no duplicates.
