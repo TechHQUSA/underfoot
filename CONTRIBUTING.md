@@ -14,7 +14,7 @@
 ./gradlew :protocol:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug
 ./gradlew :app:connectedDebugAndroidTest   # needs a phone on adb
 ```
-JDK 17 and the Android SDK (platform 36) are required.
+JDK 17 or newer (21 works) and the Android SDK (platform 36) are required.
 
 ## Hardware checklist (run before every release)
 - Pad on, app closed, walk 2 minutes: the session appears in History and in Health Connect with correct totals.

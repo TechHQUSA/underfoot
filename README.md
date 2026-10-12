@@ -35,4 +35,4 @@ The app writes to the pad only when you tap a button, apart from the Bluetooth h
 UREVO URTM059 only. Other pads in the same family may work; they are untested. See `PROTOCOL.md` for what was measured, and `CONTRIBUTING.md` for how to add a model.
 
 ## Build
-See `CONTRIBUTING.md`. JDK 17 and the Android SDK (platform 36). License: GPL-3.0-or-later.
+See `CONTRIBUTING.md`. JDK 17 or newer (21 works) and the Android SDK (platform 36). License: GPL-3.0-or-later.

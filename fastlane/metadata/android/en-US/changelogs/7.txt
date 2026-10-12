@@ -1,0 +1,1 @@
+Build change only: the app now builds with JDK 21 as well as 17 (requested by F-Droid review). No behaviour changes.
