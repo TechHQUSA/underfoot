@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TechHQ
+
 package org.underfoot.protocol
 
 data class Progress(val activeSec: Long, val distanceM: Double, val steps: Int? = null)

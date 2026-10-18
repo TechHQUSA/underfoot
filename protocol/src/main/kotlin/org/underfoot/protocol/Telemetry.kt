@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 TechHQ
+
 package org.underfoot.protocol
 
 /** STARTING is the 3-2-1 countdown before the belt moves (status byte 0x02, seen on URTM059). */

@@ -1,0 +1,1 @@
+Source files now carry GPL-3.0-or-later license headers (requested by F-Droid review). No behaviour changes.
