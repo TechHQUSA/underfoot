@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 
 class SyncWorker(ctx: Context, p: WorkerParameters) : CoroutineWorker(ctx, p) {
     override suspend fun doWork(): Result =
-        when (SyncSessions(AppDb.get(applicationContext).sessions(), HealthConnectGateway(applicationContext)).run()) {
+        when (SyncSessions(AppDb.get(applicationContext).sessions(), HealthConnectGateway(applicationContext)) { android.util.Log.w("UnderfootSync", it) }.run()) {
             SyncResult.Done, SyncResult.Blocked -> Result.success()   // Blocked: re-enqueued when the app opens or permission is granted
             SyncResult.Retry -> Result.retry()
         }

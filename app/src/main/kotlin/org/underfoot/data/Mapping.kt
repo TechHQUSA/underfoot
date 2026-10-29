@@ -4,6 +4,7 @@
 package org.underfoot.data
 
 import org.underfoot.protocol.FinalSession
+import org.underfoot.protocol.PauseList
 import org.underfoot.protocol.Profile
 
 fun FinalSession.toEntity() = SessionEntity(
@@ -11,6 +12,7 @@ fun FinalSession.toEntity() = SessionEntity(
     distanceM = distanceM, distanceSource = distanceSource.name,
     steps = steps, stepsSource = stepsSource.name,
     kcal = kcal, kcalSource = kcalSource.name,
+    pauses = PauseList.encode(pauses),
 )
 
 fun ProfileEntity.toProfile() = Profile(weightKg, heightCm)

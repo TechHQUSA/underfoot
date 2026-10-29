@@ -3,6 +3,7 @@
 
 package org.underfoot.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -19,6 +20,8 @@ data class SessionEntity(
     val kcal: Double,
     val kcalSource: String,
     val synced: Boolean = false,
+    /** When the belt stood still, encoded by `PauseList` ("start-end,..." in epoch ms); empty for none and for walks saved before 0.1.9. */
+    @ColumnInfo(defaultValue = "''") val pauses: String = "",
 )
 
 @Entity(tableName = "profile")

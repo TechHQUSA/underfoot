@@ -50,6 +50,8 @@ class SessionTracker(
     private var lastDist: Double? = null
     private var gapDistFrom: Double? = null        // distance at the start of a gap whose distance is not filled yet (FTMS arrives after fff1)
     private var unobserved = false                 // a link loss since the last frame: the interval across it is not walking time
+    private var pauseOpenAt: Long? = null          // the belt stopped here and has not run since; unlike pausedSince, the countdown keeps it open
+    private val pauses = mutableListOf<Pair<Long, Long>>()
 
     private var pending: Carry? = null             // where the app last ended a walk the pad may still be on
     private var carriedFrom: Carry? = null         // the carry the open walk counts from, kept again if that walk is too short to save
@@ -90,10 +92,11 @@ class SessionTracker(
             }
             latest = Totals(t.distanceM ?: latest.dist, t.steps ?: latest.steps, t.kcal ?: latest.kcal)
             when (t.status) {
-                BeltStatus.PAUSING, BeltStatus.PAUSED -> if (pausedSince == null) pausedSince = nowMs
+                BeltStatus.PAUSING, BeltStatus.PAUSED -> { if (pausedSince == null) pausedSince = nowMs; if (pauseOpenAt == null) pauseOpenAt = nowMs }
                 BeltStatus.RUNNING, BeltStatus.STARTING -> pausedSince = null
                 else -> {}
             }
+            if (t.status == BeltStatus.RUNNING) pauseOpenAt?.let { if (nowMs > it) pauses += it to nowMs; pauseOpenAt = null }
         }
         if (t.status == BeltStatus.STOPPED || t.status == BeltStatus.IDLE) pending = null   // the pad's counters start over
         t.elapsedSec?.let { lastElapsed = it }; t.distanceM?.let { lastDist = it }
@@ -152,6 +155,7 @@ class SessionTracker(
         startMs = nowMs - activeMs; wallStartMs = wallClock() - activeMs
         latest = Totals(t.distanceM ?: base.dist, t.steps ?: base.steps, t.kcal ?: base.kcal)
         carriedFrom = goesOn; pending = null
+        pauses.clear(); pauseOpenAt = null
     }
 
     private fun delta(b: Double?, l: Double?): Double? = when {
@@ -162,13 +166,16 @@ class SessionTracker(
 
     private fun end(endMs: Long, padEnded: Boolean = false): SessionSummary? {
         val s = startMs ?: return null
+        pauseOpenAt?.let { if (it < endMs) pauses += it to endMs }       // a plain pause backstop ends exactly where its pause began
         val summary = SessionSummary(
             s, endMs, activeMs / 1000, integratedM,
             delta(base.dist, latest.dist),
             delta(base.steps?.toDouble(), latest.steps?.toDouble())?.toInt(),
             delta(base.kcal, latest.kcal),
             wallStartMs,
+            pauses.map { (a, b) -> maxOf(a, s) to minOf(b, endMs) }.filter { (a, b) -> b > a },
         )
+        pauses.clear(); pauseOpenAt = null
         val endElapsed = lastElapsed
         startMs = null; disconnectedAt = null; released = false; lastElapsed = null; lastDist = null; gapDistFrom = null; unobserved = false; pausedSince = null; activeMs = 0; integratedM = 0.0
         val kept = summary.activeSec >= minActiveSec

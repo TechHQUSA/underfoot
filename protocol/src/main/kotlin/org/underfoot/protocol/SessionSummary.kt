@@ -18,13 +18,18 @@ data class SessionSummary(
     val deviceSteps: Int?,
     val deviceKcal: Double?,
     val wallStartMs: Long = 0L,   // epoch time at the start frame; startMs/endMs are monotonic
+    /** When the belt stood still, as [start, end) on the same clock as startMs/endMs: sorted, non-overlapping, inside the walk. */
+    val pauses: List<Pair<Long, Long>> = emptyList(),
 )
 
 /**
  * The tracker's start and end are monotonic, so they cannot be stored. Stored start is the wall clock captured when the walk began,
  * and the end keeps the monotonic duration, so a clock change during a walk cannot move or reverse the times.
  */
-fun SessionSummary.withWallClock(): SessionSummary = copy(startMs = wallStartMs, endMs = wallStartMs + (endMs - startMs))
+fun SessionSummary.withWallClock(): SessionSummary {
+    val shift = wallStartMs - startMs
+    return copy(startMs = wallStartMs, endMs = endMs + shift, pauses = pauses.map { (a, b) -> a + shift to b + shift })
+}
 
 data class FinalSession(
     val startMs: Long,
@@ -36,6 +41,7 @@ data class FinalSession(
     val stepsSource: Source,
     val kcal: Double,
     val kcalSource: Source,
+    val pauses: List<Pair<Long, Long>> = emptyList(),
 )
 
 fun SessionSummary.finalize(profile: Profile): FinalSession {
@@ -48,5 +54,6 @@ fun SessionSummary.finalize(profile: Profile): FinalSession {
         dist, if (devDist != null) Source.DEVICE else Source.ESTIMATED,
         steps ?: Estimators.steps(dist, profile.heightCm), if (steps != null) Source.DEVICE else Source.ESTIMATED,
         kcal ?: Estimators.kcal(dist, activeSec.toDouble(), profile.weightKg), if (kcal != null) Source.DEVICE else Source.ESTIMATED,
+        pauses,
     )
 }

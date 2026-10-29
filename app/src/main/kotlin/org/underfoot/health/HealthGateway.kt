@@ -7,6 +7,7 @@ import android.content.Context
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.ExerciseSegment
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.StepsRecord
@@ -16,6 +17,8 @@ import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.units.Energy
 import androidx.health.connect.client.units.Length
 import org.underfoot.data.SessionEntity
+import org.underfoot.protocol.HealthPlan
+import org.underfoot.protocol.PauseList
 import java.time.Instant
 import java.time.ZoneId
 
@@ -50,25 +53,29 @@ class HealthConnectGateway(private val ctx: Context) : HealthGateway {
         return c.permissionController.getGrantedPermissions().containsAll(HEALTH_PERMISSIONS)
     }
 
+    /** Maps [HealthPlan] one to one; the spans, ids and values are decided (and tested) there. */
     override suspend fun write(s: SessionEntity) {
         val c = client() ?: error("Health Connect unavailable")
-        val start = Instant.ofEpochMilli(s.startMs)
-        val end = Instant.ofEpochMilli(maxOf(s.endMs, s.startMs + 1000))
-        val off = ZoneId.systemDefault().rules.getOffset(start)
-        // Recorded by a device; one stable id per record type; the version is constant because sessions are immutable.
-        fun meta(kind: String) = Metadata.autoRecorded(
-            Device(type = Device.TYPE_UNKNOWN, manufacturer = "UREVO", model = "Walking pad"),
-            clientRecordId = "underfoot-${org.underfoot.AppPrefs(ctx).installId}-${s.id}-$kind", clientRecordVersion = 0L,
-        )
+        val pauses = when (val p = PauseList.decode(s.pauses, s.startMs, s.endMs)) {
+            is PauseList.Valid -> p.pauses
+            is PauseList.Invalid -> throw IllegalArgumentException(p.reason)   // never as unpaused: that would cover the pauses again
+        }
+        val plan = HealthPlan.of("underfoot-${org.underfoot.AppPrefs(ctx).installId}-${s.id}", s.startMs, s.endMs, pauses, s.steps, s.distanceM, s.kcal)
+        val off = ZoneId.systemDefault().rules.getOffset(Instant.ofEpochMilli(s.startMs))
+        fun at(ms: Long) = Instant.ofEpochMilli(ms)
+        // Recorded by a device; one stable id per record; the version is constant because sessions are immutable.
+        fun meta(id: String) = Metadata.autoRecorded(Device(type = Device.TYPE_UNKNOWN, manufacturer = "UREVO", model = "Walking pad"), clientRecordId = id, clientRecordVersion = 0L)
+        val ses = plan.session
         val records = mutableListOf<Record>(
             ExerciseSessionRecord(
-                startTime = start, startZoneOffset = off, endTime = end, endZoneOffset = off,
-                metadata = meta("exercise"), exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walking pad",
+                startTime = at(ses.startMs), startZoneOffset = off, endTime = at(ses.endMs), endZoneOffset = off,
+                metadata = meta(ses.id), exerciseType = ExerciseSessionRecord.EXERCISE_TYPE_WALKING, title = "Walking pad",
+                segments = ses.pauses.map { (a, b) -> ExerciseSegment(at(a), at(b), ExerciseSegment.EXERCISE_SEGMENT_TYPE_PAUSE) },
             ),
         )
-        if (s.steps > 0) records += StepsRecord(start, off, end, off, s.steps.toLong(), meta("steps"))
-        if (s.distanceM > 0.0) records += DistanceRecord(start, off, end, off, Length.meters(s.distanceM), meta("distance"))
-        if (s.kcal > 0.0) records += TotalCaloriesBurnedRecord(start, off, end, off, Energy.kilocalories(s.kcal), meta("kcal"))
+        plan.steps.forEach { records += StepsRecord(at(it.startMs), off, at(it.endMs), off, it.value.toLong(), meta(it.id)) }
+        plan.distance.forEach { records += DistanceRecord(at(it.startMs), off, at(it.endMs), off, Length.meters(it.value), meta(it.id)) }
+        plan.kcal.forEach { records += TotalCaloriesBurnedRecord(at(it.startMs), off, at(it.endMs), off, Energy.kilocalories(it.value), meta(it.id)) }
         c.insertRecords(records)   // an equal clientRecordId and version is ignored, so a retry after an ambiguous failure cannot duplicate
     }
 }

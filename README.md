@@ -8,7 +8,8 @@ Status: version 0.1, tested on a UREVO `URTM059` (the "2D Pro").
 - **Records while you use it.** Open the app and it connects to the pad and records while the belt runs, including with the phone locked. It leaves the pad alone otherwise (connecting powers the pad on); an optional setting keeps it connected in the background. A walk ends when you end it on the pad (long-press play/pause) or in the app, or when the pad powers off.
 - **Shows live numbers:** speed (mph, or km/h), time, distance, calories and steps, with a speed dial.
 - **Controls the belt:** Start, Pause/Resume, a red Stop button and belt speed (drag the dial handle or tap - and +, 0.6-4.0 mph). They send only what you tap, and you can switch the controls off in Settings.
-- **Saves to Health Connect** as a Walking exercise session with steps, distance and total calories.
+- **Saves to Health Connect** as a Walking exercise session with steps, distance and total calories. Pauses are marked on the session, and steps, distance and calories cover only the time the belt moved.
+- **Works alongside a watch.** If a watch also writes steps, put Underfoot above it in Health Connect (Data and access, Steps, App priority): Health Connect then takes the pad's steps while the belt moves and the watch's steps the rest of the day, including your pauses.
 - **Keeps a history** with each value marked as reported by the pad or estimated.
 
 Time, distance, speed, energy and steps come from the pad. Calories are the pad's own estimate.

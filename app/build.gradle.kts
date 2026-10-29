@@ -11,8 +11,8 @@ android {
         applicationId = "org.underfoot"
         minSdk = 28
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.1.8"
+        versionCode = 10
+        versionName = "0.1.9"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }
@@ -40,6 +40,7 @@ android {
     }
 }
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+android.sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")   // MigrationTestHelper reads the exported schemas
 dependencies {
     implementation(project(":protocol"))
     implementation(platform(libs.compose.bom))

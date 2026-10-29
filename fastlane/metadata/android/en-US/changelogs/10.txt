@@ -1,0 +1,1 @@
+Pauses now reach Health Connect: the walk is marked with its pauses, and steps, distance and calories cover only the time the belt moved. With Underfoot above your watch in Health Connect's step priority, the steps you take off the pad during a pause count too.

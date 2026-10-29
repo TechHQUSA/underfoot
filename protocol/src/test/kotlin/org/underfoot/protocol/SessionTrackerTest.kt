@@ -407,4 +407,97 @@ class SessionTrackerTest {
         assertNull(t.tick(71_300 + 5 * MIN))
         assertTrue(t.isActive)
     }
+
+    // Pauses: the stretches the belt stood still, so Health Connect gets steps only for the time it moved
+    private fun SessionTracker.statusFor(s: BeltStatus, fromSec: Int, toSec: Int) { for (x in fromSec..toSec) onTelemetry(st(s), x * 1000L) }
+
+    @Test fun aPauseIsRecordedUntilTheBeltRunsNotUntilTheCountdown() {
+        val t = SessionTracker()
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 40); t.statusFor(BeltStatus.STARTING, 41, 43); t.runFor(44, 60)
+        val out = t.onTelemetry(st(BeltStatus.STOPPED), 61_000)!!
+        assertEquals(listOf(31_000L to 44_000L), out.pauses)
+    }
+
+    @Test fun aCountdownThatFallsBackToPausedIsOnePauseAndTheBackstopRestarts() {
+        val t = SessionTracker(pauseEndMs = 60_000)
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 35); t.onTelemetry(st(BeltStatus.STARTING), 36_000)
+        t.statusFor(BeltStatus.PAUSED, 37, 96)
+        val out = t.onTelemetry(st(BeltStatus.PAUSED), 97_000)!!                    // 60 s after the second PAUSED frame
+        assertEquals(37_000L, out.endMs)
+        assertEquals(listOf(31_000L to 37_000L), out.pauses)
+    }
+
+    @Test fun endWhilePausedClosesThePauseAtTheEnd() {
+        val t = SessionTracker()
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 40)
+        assertEquals(listOf(31_000L to 41_000L), t.onTelemetry(st(BeltStatus.STOPPED), 41_000)!!.pauses)
+    }
+
+    @Test fun endDuringTheCountdownKeepsThePause() {
+        val t = SessionTracker()
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 35); t.onTelemetry(st(BeltStatus.STARTING), 36_000)
+        assertEquals(listOf(31_000L to 37_000L), t.onTelemetry(st(BeltStatus.STOPPED), 37_000)!!.pauses)
+    }
+
+    @Test fun thePauseBackstopAddsNoPause() {
+        val t = SessionTracker(pauseEndMs = 60_000)
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 90)
+        val out = t.onTelemetry(st(BeltStatus.PAUSED), 91_000)!!
+        assertEquals(31_000L, out.endMs); assertEquals(emptyList(), out.pauses)
+    }
+
+    @Test fun aDisconnectTimeoutWhilePausedKeepsThePauseUpToTheEnd() {
+        val t = SessionTracker()
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 40)
+        t.onDisconnect(41_000)
+        val out = t.tick(101_000)!!
+        assertEquals(41_000L, out.endMs); assertEquals(listOf(31_000L to 41_000L), out.pauses)
+    }
+
+    @Test fun aLinkLossWhilePausedClosesThePauseAtTheFirstRunningFrameBack() {
+        val t = SessionTracker()
+        for (s in 0..30) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
+        for (s in 31..40) t.onTelemetry(rt(BeltStatus.PAUSED, el = 30), s * 1000L)
+        t.onDisconnect(41_000)
+        t.onTelemetry(rt(BeltStatus.RUNNING, el = 40), 80_000)
+        val out = t.onTelemetry(rt(BeltStatus.STOPPED, el = 41), 81_000)!!
+        assertEquals(listOf(31_000L to 80_000L), out.pauses)
+    }
+
+    @Test fun aPauseTheAppNeverSawIsNotRecorded() {
+        val t = SessionTracker()
+        for (s in 0..30) t.onTelemetry(rt(BeltStatus.RUNNING, el = s), s * 1000L)
+        t.onDisconnect(31_000)
+        t.onTelemetry(rt(BeltStatus.RUNNING, el = 40), 80_000)
+        assertEquals(emptyList(), t.onTelemetry(rt(BeltStatus.STOPPED, el = 41), 81_000)!!.pauses)
+    }
+
+    @Test fun aWalkJoinedLateRecordsItsLaterPauses() {
+        val t = SessionTracker()
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 600, steps = 500), 0)
+        for (s in 1..9) t.onTelemetry(pad(BeltStatus.RUNNING, el = 600 + s, steps = 500 + s), s * 1000L)
+        for (s in 10..20) t.onTelemetry(pad(BeltStatus.PAUSED, el = 609, steps = 509), s * 1000L)
+        for (s in 21..30) t.onTelemetry(pad(BeltStatus.RUNNING, el = 588 + s, steps = 488 + s), s * 1000L)
+        val out = t.onTelemetry(pad(BeltStatus.STOPPED, el = 618, steps = 518), 31_000)!!
+        assertEquals(-600_000L, out.startMs)
+        assertEquals(listOf(10_000L to 21_000L), out.pauses)
+    }
+
+    @Test fun pausesDoNotLeakIntoTheNextWalk() {
+        val t = SessionTracker()
+        t.runFor(0, 30); t.statusFor(BeltStatus.PAUSED, 31, 40); t.runFor(41, 60)
+        val first = t.onTelemetry(st(BeltStatus.STOPPED), 61_000)!!
+        t.runFor(100, 130)
+        val second = t.onTelemetry(st(BeltStatus.STOPPED), 131_000)!!
+        assertEquals(listOf(31_000L to 41_000L), first.pauses)                      // the returned list is not cleared with the tracker
+        assertEquals(emptyList(), second.pauses)
+    }
+
+    @Test fun aDiscardedShortWalkLeavesNoPauseBehind() {
+        val t = SessionTracker()
+        t.runFor(0, 3); t.statusFor(BeltStatus.PAUSED, 4, 5)
+        assertNull(t.onTelemetry(st(BeltStatus.STOPPED), 6_000))
+        t.runFor(100, 130)
+        assertEquals(emptyList(), t.onTelemetry(st(BeltStatus.STOPPED), 131_000)!!.pauses)
+    }
 }

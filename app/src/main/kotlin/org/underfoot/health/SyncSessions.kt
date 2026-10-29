@@ -14,7 +14,8 @@ interface HealthGateway {
 
 enum class SyncResult { Done, Blocked, Retry }
 
-class SyncSessions(private val dao: SessionDao, private val gw: HealthGateway) {
+/** `warn` reports a walk Health Connect can never take (production logs it; tests collect it). */
+class SyncSessions(private val dao: SessionDao, private val gw: HealthGateway, private val warn: (String) -> Unit = {}) {
     suspend fun run(): SyncResult {
         try { if (!gw.hasPermissions()) return SyncResult.Blocked }
         catch (e: CancellationException) { throw e }
@@ -22,7 +23,7 @@ class SyncSessions(private val dao: SessionDao, private val gw: HealthGateway) {
         for (s in dao.unsynced()) {
             try { gw.write(s); dao.markSynced(s.id) }
             catch (e: CancellationException) { throw e }
-            catch (e: IllegalArgumentException) { continue }   // permanently invalid for Health Connect: skip it, do not block later walks
+            catch (e: IllegalArgumentException) { warn("skipped walk ${s.id}: ${e.message}"); continue }   // permanently invalid: skip it, do not block later walks
             catch (e: Exception) { return SyncResult.Retry }
         }
         return SyncResult.Done

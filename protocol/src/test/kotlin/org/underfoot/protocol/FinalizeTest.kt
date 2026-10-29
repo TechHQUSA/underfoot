@@ -46,4 +46,11 @@ class FinalizeTest {
         val f = sum().finalize(Profile(Double.NaN, -5.0))
         assertEquals(0, f.steps); assertEquals(0.0, f.kcal)
     }
+
+    @Test fun pausesMoveWithTheWallClockAndSurviveFinalize() {
+        val s = SessionSummary(1_000, 61_000, 50, 40.0, null, 60, null, wallStartMs = 1_700_000_000_000L, pauses = listOf(11_000L to 21_000L))
+        val w = s.withWallClock()
+        assertEquals(listOf(1_700_000_010_000L to 1_700_000_020_000L), w.pauses)
+        assertEquals(w.pauses, w.finalize(Profile.DEFAULT).pauses)
+    }
 }

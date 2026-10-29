@@ -60,9 +60,10 @@ class SyncSessionsTest {
     }
 
     @Test fun invalidSessionIsSkippedAndDoesNotBlockLaterOnes() = runTest {
-        val dao = FakeDao(mutableListOf(row(1), row(2), row(3))); val gw = FakeGw(rejectId = 2)
-        assertEquals(SyncResult.Done, SyncSessions(dao, gw).run())
+        val dao = FakeDao(mutableListOf(row(1), row(2), row(3))); val gw = FakeGw(rejectId = 2); val warnings = mutableListOf<String>()
+        assertEquals(SyncResult.Done, SyncSessions(dao, gw, warnings::add).run())
         assertEquals(listOf(1L, 3L), dao.synced)                   // 2 is permanently invalid: left unsynced, not retried forever
+        assertEquals(listOf("skipped walk 2: value out of range"), warnings)
     }
 
     @Test fun nothingToSyncIsDone() = runTest {

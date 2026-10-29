@@ -80,6 +80,12 @@ class SessionStoreTest {
         assertEquals(listOf(1_000L, 2_000L), sessions.rows.map { it.startMs })
     }
 
+    @Test fun pausesAreStoredOnTheWallClockWithTheWalk() = runTest {
+        val sessions = Sessions(); val store = SessionStore(sessions, Profiles(null))
+        store.enqueue(walk(monoStart = 5_000, wallStart = 1_700_000_000_000).copy(pauses = listOf(15_000L to 25_000L))); store.flush()
+        assertEquals("1700000010000-1700000020000", sessions.rows.single().pauses)
+    }
+
     @Test fun nothingQueuedIsNothingToDo() = runTest {
         val store = SessionStore(Sessions(), Profiles(null))
         assertEquals(FlushResult.NOTHING, store.flush())
