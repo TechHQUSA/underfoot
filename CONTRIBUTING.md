@@ -33,6 +33,8 @@ JDK 17 or newer (21 works) and the Android SDK (platform 36) are required.
 - Set "Let the pad sleep" to 5 min, pause the walk and wait: the app disconnects, the pad switches itself off, and resuming the walk afterwards keeps one session.
 - After the app releases the pad (Today says Resting), the pad powers off and stays off; the app does not reconnect on its own, not even after an hour.
 - While resting, resume on the remote within the pause backstop (30 min after the pause) and walk a few minutes, then tap Reconnect: the saved walk's duration matches the pad's clock, not just the time the app saw.
+- Start a walk on the remote with the app closed, walk a few minutes, then open the app: Today shows the pad's step count and time straight away, and the saved walk matches the console.
+- With Let the pad sleep on, walk, pause until the app lets go, close the app, then resume on the remote and reopen the app: the second saved walk holds only what came after the first, nothing twice.
 - Force a crash in a debug build, relaunch: the dialog appears, Send opens the share sheet, and the prompt does not repeat.
 
 ## Releases

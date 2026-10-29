@@ -1,0 +1,1 @@
+Starting a walk on the remote and opening the app later no longer resets the step count: the steps, time and distance the pad already counted are kept. A walk the app already saved is never counted twice when the pad carries on.

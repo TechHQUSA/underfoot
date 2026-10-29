@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.collect
 import org.underfoot.health.SyncScheduler
 import org.underfoot.CommandResult
 import org.underfoot.protocol.BeltStatus
+import org.underfoot.protocol.Carry
 import org.underfoot.protocol.CommandGate
 import org.underfoot.protocol.FtmsControl
 import org.underfoot.protocol.PadCommand
@@ -150,6 +151,7 @@ class WalkService : Service() {
         override fun run() {
             if (destroyed) return
             tracker.tick(SystemClock.elapsedRealtime())?.let(::persist)
+            saveCarry()
             checkSleep()
             checkIdleStop()
             checkAdvScan()
@@ -249,7 +251,7 @@ class WalkService : Service() {
             if (e !is SecurityException && e !is IllegalStateException) throw e
             LiveState.flow.value = Live(problem = Problem.PERMISSION); stopSelf(); return START_NOT_STICKY
         }
-        if (!::prefs.isInitialized) { prefs = AppPrefs(this); log = FrameLog(File(filesDir, "raw")) }
+        if (!::prefs.isInitialized) { prefs = AppPrefs(this); log = FrameLog(File(filesDir, "raw")); tracker.carry = prefs.carry; savedCarry = tracker.carry }
         if (manager == null) {
             ContextCompat.registerReceiver(this, btState, android.content.IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
             profileJob?.cancel()
@@ -352,6 +354,7 @@ class WalkService : Service() {
         val t = merger.merge(UrevoDriver.decodeFff1(bytes) ?: return)
         if (t.status == BeltStatus.RUNNING || t.status == BeltStatus.STARTING) gate.cancel()   // moving again: a disconnect still queued must not keep us away
         tracker.onTelemetry(t, SystemClock.elapsedRealtime())?.let(::persist)
+        saveCarry()
         last = last.copy(status = t.status, speedKmh = if (t.status == BeltStatus.RUNNING) (t.speedKmh ?: 0.0) else 0.0)
         pendingCmd?.let { if (FtmsControl.confirmedBy(it, pendingBefore, t.status)) finishCommand(CommandResult.OK) }   // some pads never reply on the control point
         publish()
@@ -409,6 +412,14 @@ class WalkService : Service() {
 
     private fun persist(s: SessionSummary) { store.enqueue(s); flush() }
 
+    private var savedCarry: Carry? = null
+
+    /** Written only when it changes, which is at most a few times per walk. */
+    private fun saveCarry() {
+        val c = tracker.carry
+        if (c != savedCarry) { prefs.carry = c; savedCarry = c }
+    }
+
     /** A failed save (for example storage full) shows a notification and is retried every 30 s by the ticker. */
     private fun flush() {
         scope.launch {
@@ -457,6 +468,7 @@ class WalkService : Service() {
         if (advScanning) runCatching { (getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter?.bluetoothLeScanner?.stopScan(advCb) }
         // The final walk is written before the service goes away: a process kill right after onDestroy would otherwise lose it.
         tracker.finish(SystemClock.elapsedRealtime())?.let(store::enqueue)
+        if (::prefs.isInitialized) saveCarry()
         runCatching { kotlinx.coroutines.runBlocking { store.flush() } }
         manager?.close()                           // disconnects and releases the GATT client; late callbacks are ignored via `destroyed`
         manager = null

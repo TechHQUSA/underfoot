@@ -4,6 +4,7 @@
 package org.underfoot
 
 import android.content.Context
+import org.underfoot.protocol.Carry
 
 class AppPrefs(ctx: Context) {
     private val p = ctx.getSharedPreferences("prefs", Context.MODE_PRIVATE)
@@ -32,4 +33,7 @@ class AppPrefs(ctx: Context) {
     /** MAC of the paired pad; connect directly when known, scan only when null. */
     var padAddress: String?
         get() = p.getString("pad", null); set(v) = p.edit().putString("pad", v).apply()
+    /** The pad's counters where the app last ended a walk the pad may still be on, so a restarted service does not save that part twice. */
+    var carry: Carry?
+        get() = p.getString("carry", null)?.let(Carry::decode); set(v) = p.edit().putString("carry", v?.encode()).apply()
 }

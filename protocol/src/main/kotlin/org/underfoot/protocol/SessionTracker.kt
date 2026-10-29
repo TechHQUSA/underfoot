@@ -5,6 +5,18 @@ package org.underfoot.protocol
 
 data class Progress(val activeSec: Long, val distanceM: Double, val steps: Int? = null)
 
+/** The pad's counters where the app (not the pad) ended a walk, and the wall time it did so. The caller keeps it across restarts. */
+data class Carry(val distanceM: Double?, val steps: Int?, val kcal: Double?, val elapsedSec: Int?, val atWallMs: Long) {
+    /** One line for storage; nulls are empty fields. */
+    fun encode(): String = listOf(distanceM ?: "", steps ?: "", kcal ?: "", elapsedSec ?: "", atWallMs).joinToString("|")
+
+    companion object {
+        fun decode(s: String): Carry? = s.split('|').takeIf { it.size == 5 }?.let {
+            Carry(it[0].toDoubleOrNull(), it[1].toIntOrNull(), it[2].toDoubleOrNull(), it[3].toIntOrNull(), it[4].toLongOrNull() ?: return null)
+        }
+    }
+}
+
 /** Pure state machine. Not thread-safe: the caller must serialize all calls on one thread. Times are milliseconds on a monotonic clock the caller supplies (the service uses `SystemClock.elapsedRealtime()`); the caller converts summary times to epoch for storage. */
 class SessionTracker(
     private val gapMs: Long = 5_000,
@@ -17,6 +29,8 @@ class SessionTracker(
      */
     private val pauseEndMs: Long = 30 * 60_000,
     private val wallClock: () -> Long = System::currentTimeMillis,
+    /** A carry older than this is ignored: the pad has long since ended or slept, and a walk after that starts its counters over. */
+    private val carryMaxMs: Long = 2 * 60 * 60_000,
 ) {
     private data class Totals(val dist: Double? = null, val steps: Int? = null, val kcal: Double? = null)
 
@@ -36,6 +50,17 @@ class SessionTracker(
     private var lastDist: Double? = null
     private var gapDistFrom: Double? = null        // distance at the start of a gap whose distance is not filled yet (FTMS arrives after fff1)
     private var unobserved = false                 // a link loss since the last frame: the interval across it is not walking time
+
+    private var pending: Carry? = null             // where the app last ended a walk the pad may still be on
+    private var carriedFrom: Carry? = null         // the carry the open walk counts from, kept again if that walk is too short to save
+
+    /**
+     * Where the counting of the pad's current walk starts. Read it after each call and restore it into a new tracker: while a walk
+     * counts on from a saved one, this stays that walk's carry, so a process kill mid-walk does not count the saved part again.
+     */
+    var carry: Carry?
+        get() = pending ?: carriedFrom
+        set(v) { pending = v }
 
     val isActive: Boolean get() = startMs != null
 
@@ -70,13 +95,14 @@ class SessionTracker(
                 else -> {}
             }
         }
+        if (t.status == BeltStatus.STOPPED || t.status == BeltStatus.IDLE) pending = null   // the pad's counters start over
         t.elapsedSec?.let { lastElapsed = it }; t.distanceM?.let { lastDist = it }
         lastMs = nowMs
         lastStatus = t.status
         lastSpeedKmh = t.speedKmh
         val ended = when {
             !open && t.status == BeltStatus.RUNNING -> { begin(nowMs, t); null }
-            open && (t.status == BeltStatus.STOPPED || t.status == BeltStatus.IDLE) -> end(nowMs)
+            open && (t.status == BeltStatus.STOPPED || t.status == BeltStatus.IDLE) -> end(nowMs, padEnded = true)
             else -> null
         }
         return ended ?: expired
@@ -108,9 +134,24 @@ class SessionTracker(
 
     fun finish(nowMs: Long): SessionSummary? = if (startMs != null) end(nowMs) else null
 
+    /**
+     * The pad's counters belong to its walk and reset when it starts, so a walk the app joins late (started on the remote) counts from
+     * zero: the steps, time and distance walked before the app connected are kept. Only a walk the app itself ended while the pad went
+     * on (pause backstop, disconnect timeout) counts from where that saved walk stopped, so nothing is saved twice. The time before the
+     * join comes from the pad's elapsed counter, which stands still in a pause, so the start is backdated by at least that much.
+     */
     private fun begin(nowMs: Long, t: Telemetry) {
-        startMs = nowMs; wallStartMs = wallClock(); activeMs = 0; integratedM = 0.0
-        base = Totals(t.distanceM, t.steps, t.kcal); latest = base
+        val c = pending?.takeIf { wallClock() - it.atWallMs in 0..carryMaxMs }; val e = t.elapsedSec
+        val goesOn = c?.takeIf { e == null || it.elapsedSec == null || e >= it.elapsedSec }   // lower counters: the pad started a new walk
+        base = if (goesOn != null) Totals(goesOn.distanceM, goesOn.steps, goesOn.kcal) else Totals()
+        val fromSec = if (goesOn != null) goesOn.elapsedSec else 0
+        activeMs = if (e != null && fromSec != null && e > fromSec) (e - fromSec) * 1000L else 0
+        val d0 = if (goesOn != null) goesOn.distanceM else 0.0; val d1 = t.distanceM
+        integratedM = if (d0 != null && d1 != null && d1 > d0) d1 - d0 else 0.0
+        gapDistFrom = if (d1 == null) d0 else null           // otherwise filled from the first frame that carries distance (FTMS arrives after fff1)
+        startMs = nowMs - activeMs; wallStartMs = wallClock() - activeMs
+        latest = Totals(t.distanceM ?: base.dist, t.steps ?: base.steps, t.kcal ?: base.kcal)
+        carriedFrom = goesOn; pending = null
     }
 
     private fun delta(b: Double?, l: Double?): Double? = when {
@@ -119,7 +160,7 @@ class SessionTracker(
         else -> l                                  // counter reset: the latest value is the session value
     }
 
-    private fun end(endMs: Long): SessionSummary? {
+    private fun end(endMs: Long, padEnded: Boolean = false): SessionSummary? {
         val s = startMs ?: return null
         val summary = SessionSummary(
             s, endMs, activeMs / 1000, integratedM,
@@ -128,8 +169,11 @@ class SessionTracker(
             delta(base.kcal, latest.kcal),
             wallStartMs,
         )
+        val endElapsed = lastElapsed
         startMs = null; disconnectedAt = null; released = false; lastElapsed = null; lastDist = null; gapDistFrom = null; unobserved = false; pausedSince = null; activeMs = 0; integratedM = 0.0
-        base = Totals(); latest = Totals()
-        return if (summary.activeSec >= minActiveSec) summary else null
+        val kept = summary.activeSec >= minActiveSec
+        pending = when { padEnded -> null; kept -> Carry(latest.dist, latest.steps, latest.kcal, endElapsed, wallClock()); else -> carriedFrom }
+        base = Totals(); latest = Totals(); carriedFrom = null
+        return if (kept) summary else null
     }
 }

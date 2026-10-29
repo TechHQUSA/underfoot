@@ -103,12 +103,12 @@ class SessionTrackerTest {
         assertEquals(30L + 26L, t.onTelemetry(st(BeltStatus.STOPPED), 361_000)!!.activeSec)
     }
 
-    @Test fun padStepsAreReportedLiveAndAsTheChangeSinceTheStart() {
+    @Test fun padStepsAreReportedLiveAndSavedAsThePadsTotal() {
         val t = SessionTracker()
         t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, steps = 100), 0)
         for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, steps = 100 + s * 2), s * 1000L)
-        assertEquals(40, t.progress().steps)
-        assertEquals(40, t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!.deviceSteps)
+        assertEquals(140, t.progress().steps)
+        assertEquals(140, t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!.deviceSteps)
     }
 
     @Test fun theCountdownAfterAPauseAlsoClearsThePauseTimer() {
@@ -159,14 +159,113 @@ class SessionTrackerTest {
         assertEquals(40L, out.activeSec)
     }
 
-    @Test fun deviceTotalsAreSessionDeltasFromTheStartFrame() {
+    @Test fun deviceTotalsAreThePadsOwnWalkTotals() {
         val t = SessionTracker()
         t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 100.0, steps = 200, kcal = 10.0), 0)
         for (s in 1..20) t.onTelemetry(Telemetry(BeltStatus.RUNNING, 3.0, distanceM = 100.0 + s * 1.5, steps = 200 + s * 2, kcal = 10.0 + s), s * 1000L)
         val out = t.onTelemetry(st(BeltStatus.STOPPED), 21_000)!!
-        assertEquals(30.0, out.deviceDistanceM)
-        assertEquals(40, out.deviceSteps)
-        assertEquals(20.0, out.deviceKcal)
+        assertEquals(130.0, out.deviceDistanceM)
+        assertEquals(240, out.deviceSteps)
+        assertEquals(30.0, out.deviceKcal)
+    }
+
+    private fun pad(s: BeltStatus, el: Int, steps: Int, d: Double? = null) = Telemetry(s, 3.0, d, steps, null, el)
+
+    @Test fun aWalkStartedOnTheRemoteBeforeTheAppConnectedKeepsWhatWasWalked() {
+        var wall = 1_700_000_000_000L
+        val t = SessionTracker(wallClock = { wall })
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 600, steps = 500), 0)           // first frame after connecting; FTMS distance not in yet
+        assertEquals(500, t.progress().steps)
+        assertEquals(600L, t.progress().activeSec)
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 601, steps = 501, d = 480.0), 1_000)
+        assertEquals(480.0, t.progress().distanceM, 1.0)
+        for (s in 2..20) t.onTelemetry(pad(BeltStatus.RUNNING, el = 600 + s, steps = 500 + s, d = 480.0 + s), s * 1000L)
+        val out = t.onTelemetry(pad(BeltStatus.STOPPED, el = 620, steps = 520, d = 500.0), 21_000)!!
+        assertEquals(520, out.deviceSteps)
+        assertEquals(500.0, out.deviceDistanceM)
+        assertEquals(620L, out.activeSec)
+        assertEquals(1_700_000_000_000L - 600_000, out.wallStartMs)               // dated back to when the pad started counting
+    }
+
+    @Test fun aWalkTheAppEndedIsNotCountedTwiceWhenThePadCarriesOn() {
+        val t = SessionTracker()
+        for (s in 0..30) t.onTelemetry(pad(BeltStatus.RUNNING, el = s, steps = s), s * 1000L)
+        t.onDisconnect(31_000)
+        assertNotNull(t.tick(91_000))                                               // the link stayed down: the app saved the walk at 30 steps
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 100, steps = 100), 200_000)     // same walk on the pad, 70 s / 70 steps later
+        for (s in 1..20) t.onTelemetry(pad(BeltStatus.RUNNING, el = 100 + s, steps = 100 + s), 200_000 + s * 1000L)
+        val out = t.onTelemetry(pad(BeltStatus.STOPPED, el = 120, steps = 120), 221_000)!!
+        assertEquals(90, out.deviceSteps)                                           // 30 + 90 = the pad's 120
+        assertEquals(90L, out.activeSec)
+    }
+
+    @Test fun afterThePadEndsAWalkTheNextOneCountsFromZero() {
+        val t = SessionTracker(pauseEndMs = 60_000)
+        for (s in 0..30) t.onTelemetry(pad(BeltStatus.RUNNING, el = s, steps = s), s * 1000L)
+        for (s in 31..91) t.onTelemetry(pad(BeltStatus.PAUSED, el = 30, steps = 30), s * 1000L)   // backstop saves the walk
+        assertFalse(t.isActive)
+        t.onTelemetry(pad(BeltStatus.STOPPED, el = 30, steps = 30), 92_000)        // End on the remote: the pad starts over
+        t.onTelemetry(st(BeltStatus.IDLE), 93_000)
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 50, steps = 50), 200_000)       // a new walk, joined late
+        assertEquals(50, t.progress().steps)
+    }
+
+    @Test fun aCarryRestoredIntoANewTrackerIsNotCountedTwice() {
+        var wall = 1_700_000_000_000L
+        val first = SessionTracker(wallClock = { wall })
+        for (s in 0..30) first.onTelemetry(pad(BeltStatus.RUNNING, el = s, steps = s), s * 1000L)
+        assertNotNull(first.finish(31_000))                                        // the service stopped: walk saved at 30 steps
+        wall += 10 * 60_000
+        val next = SessionTracker(wallClock = { wall }).apply { carry = first.carry }
+        next.onTelemetry(pad(BeltStatus.RUNNING, el = 100, steps = 100), 0)
+        assertEquals(70, next.progress().steps)
+        assertEquals(70L, next.progress().activeSec)
+    }
+
+    @Test fun aWalkTooShortToSaveDoesNotMoveTheCarry() {
+        val t = SessionTracker()
+        for (s in 0..5) t.onTelemetry(pad(BeltStatus.RUNNING, el = s, steps = s), s * 1000L)
+        t.onDisconnect(6_000)
+        assertNull(t.tick(66_000))                                                  // 5 s: not saved
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 100, steps = 100), 200_000)
+        assertEquals(100, t.progress().steps)                                       // nothing was saved, so nothing is left out
+    }
+
+    @Test fun carryRoundTripsThroughItsStoredForm() {
+        val c = Carry(480.5, 500, null, 600, 1_700_000_000_000L)
+        assertEquals(c, Carry.decode(c.encode()))
+        assertNull(Carry.decode("1|2|3"))
+        assertNull(Carry.decode("1|2|3|4|x"))
+    }
+
+    @Test fun aProcessKillInAWalkThatCarriesOnDoesNotCountTheSavedPartAgain() {
+        val first = SessionTracker()
+        for (s in 0..30) first.onTelemetry(pad(BeltStatus.RUNNING, el = s, steps = s), s * 1000L)
+        first.onDisconnect(31_000); assertNotNull(first.tick(91_000))             // saved at 30 steps
+        first.onTelemetry(pad(BeltStatus.RUNNING, el = 100, steps = 100), 200_000)  // counts on from 30
+        val stored = first.carry                                                    // what the service last wrote; then the process dies
+        assertNotNull(stored)
+        val next = SessionTracker().apply { carry = stored }
+        next.onTelemetry(pad(BeltStatus.RUNNING, el = 150, steps = 150), 0)
+        assertEquals(120, next.progress().steps)
+    }
+
+    @Test fun aStaleCarryIsIgnored() {
+        var wall = 1_700_000_000_000L
+        val t = SessionTracker(wallClock = { wall })
+        t.carry = Carry(null, 30, null, 30, wall)
+        wall += 3 * 60 * 60_000                                                     // hours later: whatever the pad shows is a new walk
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 100, steps = 100), 0)
+        assertEquals(100, t.progress().steps)
+    }
+
+    @Test fun padCountersBelowTheSavedWalkMeanANewWalk() {
+        val t = SessionTracker()
+        for (s in 0..60) t.onTelemetry(pad(BeltStatus.RUNNING, el = s, steps = s), s * 1000L)
+        t.onDisconnect(61_000); t.tick(121_000)                                     // saved at 60; End and a new start happened unseen
+        t.onTelemetry(pad(BeltStatus.RUNNING, el = 20, steps = 20), 300_000)
+        assertEquals(20, t.progress().steps)
+        assertEquals(20L, t.progress().activeSec)
     }
 
     @Test fun counterThatWentDownIsTreatedAsReset() {
