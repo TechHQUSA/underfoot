@@ -16,7 +16,7 @@ Time, distance, speed, energy and steps come from the pad. Calories are the pad'
 
 ## Install
 - GitHub releases: download the signed APK from the [latest release](https://github.com/TechHQUSA/underfoot/releases/latest) and open it on your phone (Android 9 or newer).
-- F-Droid: submission pending.
+- F-Droid: [org.underfoot](https://f-droid.org/en/packages/org.underfoot/). Same signing key as the GitHub APK, so either can update the other.
 
 ## First run
 1. Allow the Bluetooth and notification permissions when asked.
