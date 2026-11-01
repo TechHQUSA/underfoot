@@ -28,7 +28,7 @@ JDK 17 or newer (21 works) and the Android SDK (platform 36) are required.
 - Bluetooth off, or the Bluetooth permission revoked: Today shows the matching message.
 - Health Connect permission denied: sessions queue and sync after you grant it.
 - In the Health Connect app, one walk shows as one Walking session with steps, distance and calories. Re-running sync (toggle the permission off and on, reopen the app) creates no duplicates.
-- Release gate: with a phone attached, `./gradlew :app:connectedDebugAndroidTest` passes (database migration 1 -> 2 and DAO tests). Also install over the previous release: old walks are still in History.
+- Release gate: with a phone attached, `./gradlew :app:connectedDebugAndroidTest` passes (database migration 1 -> 2 and DAO tests). Debug builds install as `org.underfoot.debug` ("Underfoot Debug") beside the real app, so this cannot touch its walks. Installing over the previous release needs a release-signed APK: after the tag, update and check old walks are still in History.
 - Release gate, with a watch that writes steps and Underfoot above it in Health Connect's Steps priority: walk, pause, step off the pad and walk around, resume, end. The session shows the pause; the day's steps equal the watch's steps outside the belt's moving time plus the pad's steps. Note what Open Vitals shows for duration and pace.
 - Tap "Forget paired pad" in Settings while connected: the connection drops, the app rescans, and the pad pairs again with a single session per walk.
 - Tap the recording notification: the app opens.

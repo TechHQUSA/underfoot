@@ -31,6 +31,7 @@ android {
         }
     }
     buildTypes {
+        debug { applicationIdSuffix = ".debug"; versionNameSuffix = "-debug" }   // sits beside the installed app: same id with another key would mean uninstalling it and its walks
         release {
             isMinifyEnabled = true
             isShrinkResources = true
