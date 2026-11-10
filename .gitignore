@@ -7,3 +7,6 @@ local.properties
 .DS_Store
 .superpowers/
 .memsearch/
+
+# Claude Code: "don't ask again" approvals are saved here verbatim and can hold tokens
+**/.claude/settings.local.json
